@@ -1,0 +1,68 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<!-- was: <?xml version="1.0" encoding="UTF-8"?> -->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+       http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.0.xsd
+       http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.0.xsd">
+    
+    <bean class="org.asteriskjava.fastagi.AgiServerThread" init-method="startup" destroy-method="shutdown">
+        <property name="agiServer" ref="agiServer"/>
+    </bean>
+    <bean id="agiServer" class="org.asteriskjava.fastagi.DefaultAgiServer">
+        <property name="bindPort" value="4573"/>
+        <property name="mappingStrategy" ref="mappingStrategy" />
+        <property name="poolSize" value="800" />
+    </bean>
+    <bean id="mappingStrategy" class="org.asteriskjava.fastagi.SimpleMappingStrategy">
+        <property name="mappings">
+            <map>
+                <entry key="agi_dnc_vip" value-ref="agi_dnc_vip" />
+                <entry key="agi_queueaftertime" value-ref="agi_queueaftertime" />
+                <entry key="agi_queuefail" value-ref="agi_queuefail" />
+                <entry key="agi_forwanding" value-ref="agi_forwanding" />
+                <entry key="agi_ivrmenu" value-ref="agi_ivr_menu" />
+                <entry key="agi_meetme" value-ref="agi_meetme" />
+                <entry key="agi_shortkey" value-ref="agi_shortkey" />
+                <entry key="agi_outbound" value-ref="agi_outbound" />
+                <entry key="agi_pincode" value-ref="agi_pincode" />
+                <entry key="agi_lcr" value-ref="agi_lcr" />
+                <entry key="agi_record" value-ref="agi_record" />
+                <entry key="agi_lastcall" value-ref="agi_lastcall" />
+                <entry key="agi_deletequeue" value-ref="agi_deletequeue" />
+                <entry key="agi_authen_login" value-ref="agi_authen_login" />
+                <entry key="agi_base_skill_routing" value-ref="agi_base_skill_routing" />
+                <entry key="agi_crminbound" value-ref="agi_crminbound" />
+                <entry key="agi_crmoutbound" value-ref="agi_crmoutbound" />
+                <entry key="agi_check_externalcrm" value-ref="agi_check_externalcrm" />
+                <entry key="agi_queue_status" value-ref="agi_queue_status" />
+                <entry key="agi_crmoutbound_acd" value-ref="agi_crmoutbound_acd" />
+                <entry key="agi_ivr_playback_process" value-ref="agi_ivr_playback_process" />
+            </map>
+        </property>
+    </bean>
+    <bean id="agi_dnc_vip" class="com.worldfone.agi.dncVip"></bean>
+    <bean id="agi_queueaftertime" class="com.worldfone.agi.queueAfterTime"></bean>
+    <bean id="agi_queuefail" class="com.worldfone.agi.queueFail"></bean>
+    <bean id="agi_forwanding" class="com.worldfone.agi.forwanding"></bean>
+    <bean id="agi_ivr_menu" class="com.worldfone.agi.ivrMenu"></bean>
+    <bean id="agi_meetme" class="com.worldfone.agi.meetMe"></bean>
+    <bean id="agi_shortkey" class="com.worldfone.agi.shortKey"></bean>
+    <bean id="agi_outbound" class="com.worldfone.agi.outbound"></bean>
+    <bean id="agi_pincode" class="com.worldfone.agi.pincode"></bean>
+    <bean id="agi_lcr" class="com.worldfone.agi.lcr"></bean>
+    <bean id="agi_record" class="com.worldfone.agi.recording"></bean>
+    <bean id="agi_lastcall" class="com.worldfone.agi.lastcall"></bean>
+    <bean id="agi_deletequeue" class="com.worldfone.agi.deletequeue"></bean>
+    <bean id="agi_authen_login" class="com.worldfone.agi.authenlogin"></bean>
+    <bean id="agi_base_skill_routing" class="com.worldfone.agi.baseskillrouting"></bean>
+    <bean id="agi_crminbound" class="com.worldfone.agi.crminbound"></bean>
+    <bean id="agi_crmoutbound" class="com.worldfone.agi.crmoutbound"></bean>
+    <bean id="agi_check_externalcrm" class="com.worldfone.agi.check_externalcrm"></bean>
+    <bean id="agi_queue_status" class="com.worldfone.agi.queue_status"></bean>
+    <bean id="agi_crmoutbound_acd" class="com.worldfone.agi.crmoutbound_acd"></bean>
+    <bean id="agi_ivr_playback_process" class="com.worldfone.agi.ivrPlayback"></bean>
+</beans>
