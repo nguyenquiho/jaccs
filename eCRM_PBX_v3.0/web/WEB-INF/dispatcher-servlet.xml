@@ -20,6 +20,8 @@
         <property name="mappings">
             <props>
                 <prop key="index.htm">indexController</prop>
+                <prop key="/tiger.htm">tigerController</prop>
+                <prop key="/tiger/child.htm">tigerController</prop>
             </props>
         </property>
     </bean>
@@ -35,5 +37,5 @@
     <bean name="indexController"
           class="org.springframework.web.servlet.mvc.ParameterizableViewController"
           p:viewName="index" />
-
+    <bean id="tigerController" class="com.worldfonecc.testc.JavaSpringTestController" />
 </beans>

@@ -5,6 +5,11 @@
         <param-value>/WEB-INF/applicationContext.xml</param-value>
     </context-param>
     <listener>
+        <!--Start file-->
+        <!--1. Init Spring Container-->
+        <!--This container initialize listeners defined like ContextLoaderListener (a listener of Spring Framework)-->
+<!--        ContextLoaderListener will read param contextConfigLocation defined above is /WEB-INF/applicationContext.xml
+        and will be create beans and manage them-->
         <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
     </listener>
     <servlet>
