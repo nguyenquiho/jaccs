@@ -4,29 +4,8 @@
 package com.worldfone.agi;
 
 import com.worldfone.access.DBSelectionSet;
-import com.worldfone.queue.JobUseraction;
-import static com.worldfone.utils.helpers.AsteriskCommon.QueueShow;
-import java.util.HashMap;
-import java.util.List;
-import org.asteriskjava.fastagi.AgiChannel;
-import org.asteriskjava.fastagi.AgiException;
-import org.asteriskjava.fastagi.AgiRequest;
-import org.asteriskjava.fastagi.BaseAgiScript;
-
-import com.worldfone.access.DBSelectionSet;
-import static com.worldfone.utils.helpers.LicenseKeyCommon.generateActiveCode;
-import static com.worldfone.utils.helpers.LicenseKeyCommon.generateLicenseKey;
-
-import java.io.IOException;
-import javax.servlet.http.*;
+import static com.worldfone.utils.helpers.X239hga_LicenseKeyCommon.*;
 import javax.servlet.*;
-
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.UUID;
-import java.util.Scanner;
-import java.net.NetworkInterface;
-import java.util.Collections;
 
 /**
  *
@@ -64,7 +43,7 @@ public class generateLicenseKey implements ServletContextListener {
 
     //Notification that the web application initialization process is starting
         try {
-            String[]TIGER_IMG = {"                                                                                                                                       \n" +
+            String[]conho = {"                                                                                                                                       \n" +
 "                                                                                                                                       \n" +
 "                                                                                                                                       \n" +
 "                                                                                                                                       \n" +
@@ -134,31 +113,8 @@ public class generateLicenseKey implements ServletContextListener {
 "                                                                                                                                       \n" +
 "                                                                                                                                       "
         };
-//            String[] lines = {
-//            "   __      __                               ",
-//            "  |  \\    |  \\                              ",
-//            " _| $$_    \\$$  ______    ______    ______  ",
-//            "|   $$ \\  |  \\ /      \\  /      \\  /      \\ ",
-//            " \\$$$$$$  | $$|  $$$$$$\\|  $$$$$$\\|  $$$$$$\\",
-//            "  | $$ __ | $$| $$  | $$| $$    $$| $$   \\$$ ",
-//            "  | $$|  \\| $$| $$__| $$| $$$$$$$$| $$       ",
-//            "   \\$$  $$| $$ \\$$    $$ \\$$     \\| $$       ",
-//            "    \\$$$$  \\$$ _\\$$$$$$$  \\$$$$$$$ \\$$      ",
-//            "              |  \\__| $$                     ",
-//            "               \\$$    $$                     ",
-//            "                \\$$$$$$                      "
-//            };
-//
-//            // Tính chiều rộng của console
-//            int consoleWidth = 80; // Bạn có thể điều chỉnh chiều rộng console ở đây
-//
-//            for (String line : lines) {
-//                int padding = (consoleWidth - line.length()) / 2; // Tính khoảng trắng ở bên trái
-//                String centeredLine = String.format("%" + (padding + line.length()) + "s", line);
-//                System.out.println(centeredLine);
-//            }
-            for (int i = 0; i < TIGER_IMG.length; i++) {
-                System.out.println(TIGER_IMG[i]);
+            for (int i = 0; i < conho.length; i++) {
+                System.out.println(conho[i]);
             }
             System.out.println("Generating License Key...");
             for(int i = 1; i <= 10; i++){
@@ -170,11 +126,11 @@ public class generateLicenseKey implements ServletContextListener {
                 System.out.println("Generating " + i * 10 + " %");
             }
             
-            String active_code = "";
-            active_code = generateActiveCode();
+            
+            String active_code = yGenActiveCode();
             String customer_id = DBSelectionSet.getInstance().getCustomerID();
             String max_channel = DBSelectionSet.getInstance().getMaxChannelConfig().toString();
-            String license_key = generateLicenseKey(active_code, max_channel, customer_id);
+            String license_key = xGenerateLicenseKey(active_code, max_channel, customer_id);
             System.out.println("Active Code: " + active_code);
             System.out.println("License Key: " + license_key);
         } catch (Exception ex) {

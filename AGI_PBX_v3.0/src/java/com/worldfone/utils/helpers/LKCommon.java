@@ -17,7 +17,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
-public final class LicenseKeyCommon {
+public final class LKCommon {
 
     public static String generateLicenseKey(String active_code, String max_channel, String customer_id) {
         String combinedString = active_code + max_channel + customer_id;

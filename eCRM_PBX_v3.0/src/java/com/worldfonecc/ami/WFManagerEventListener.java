@@ -125,6 +125,7 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         Runnable task = () -> {
             long receivedTimestamp0 = System.currentTimeMillis() / 1000;
             String eventName = event.getClass().getSimpleName();
+
             try {
                 switch (eventName) {
                     case "CelEvent":

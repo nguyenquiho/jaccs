@@ -899,6 +899,8 @@ public class DBSelectionSet {
         }
         String og = MysqlConnection.getInstance().getColumnByQuery("SELECT * FROM `pbx_pincode` WHERE `pincode`='" + key + "'", "outbound_group");
         String expiry = MysqlConnection.getInstance().getColumnByQuery("SELECT * FROM `pbx_pincode` WHERE `pincode`='" + key + "'", "expiry");
+//        Integer cursecond = Integer.valueOf(MysqlConnection.getInstance().getColumnByQuery("SELECT * FROM `pbx_pincode` WHERE `pincode`='" + key + "'", "cursecond"));
+//        Integer timeout = Integer.valueOf(MysqlConnection.getInstance().getColumnByQuery("SELECT * FROM `pbx_pincode` WHERE `pincode`='" + key + "'", "cursecond"));
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         LocalDateTime localDateTime = LocalDateTime.parse(expiry, formatter);
         Timestamp timestamp = Timestamp.valueOf(localDateTime);
