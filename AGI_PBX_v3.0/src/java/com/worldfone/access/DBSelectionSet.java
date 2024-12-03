@@ -9,6 +9,7 @@ package com.worldfone.access;
 import com.worldfone.cache.MyMemcached;
 import com.worldfone.utils.helpers.BasedCommon;
 import com.worldfone.wrg.AESCipher;
+import java.io.IOException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
@@ -20,6 +21,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -1246,4 +1248,15 @@ public class DBSelectionSet {
         }
         return "C001";
     }
+    
+    public HashMap<String, String> getAppInfo(String extension) throws IOException {
+        try {
+            HashMap rs = MysqlConnection.getInstance().getOneByQuery("SELECT * FROM `app_login` where `extension` = " + extension + " LIMIT 1");
+            return rs;
+        } catch (JedisException ex) {
+            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
+        }
+        return null;
+    }
+    
 }
