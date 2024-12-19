@@ -62,13 +62,12 @@ public class push_notification extends BaseAgiScript {
                     String app_url = "";
                     String api_url = "";
                     if (props.containsKey("app.url")) {
-                        app_url = props.getProperty("app.url");
+                        app_url = props.getProperty("app.url").replaceAll("/$", "");
                         api_url = app_url + "/softphoneapi/push_notification.php";
                     }
                     System.out.println("API url: " + api_url);
                     if (api_url != ""){
                         pushNotificationResult = pushNotification(api_url, dataPush, ac);
-                        
                         if (pushNotificationResult) {
                             ac.verbose("PUSH NOTIFICATION SUCCESSFULLY!", 1);
                             Thread.sleep(6000); // 6 seconds in milliseconds

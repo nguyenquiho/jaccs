@@ -31,6 +31,15 @@ public class check_externalcrm extends BaseAgiScript {
             ac.verbose("check external crm", 1);
             String src = ar.getArguments()[0];
             String crm_dest = ar.getArguments()[1];
+            
+            //EVNHCM
+            String callid_web360 = "";
+            
+            if(ar.getArguments().length > 2){
+                callid_web360 = ar.getArguments()[2];
+                System.out.println("CALLID_WEB360 " + callid_web360);
+            }
+            System.out.println("CALLID_WEB360 " + callid_web360);
             String now = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(Calendar.getInstance().getTime());
             String channel = ar.getChannel();
             //System.out.println("channel " + channel);
@@ -61,6 +70,13 @@ public class check_externalcrm extends BaseAgiScript {
                                 c.addParam("receivedtime", now);
                                 c.addParam("starttime", now);
                                 c.addParam("dnis", dnis);
+                                if(!"".equalsIgnoreCase(callid_web360)){ // EVNHCM
+                                    c.addParam("callid_web360", callid_web360);
+                                    boolean setCallidWeb360 = DBSelectionSet.getInstance().setCallidWeb360(calluuid, callid_web360);
+                                    if(!setCallidWeb360) System.out.println("DONT SET CALLID_WEB360" + calluuid);
+                                }else{
+                                    c.addParam("callid_web360", "no_web360");
+                                }
                                 c.addParam("version", "3");
                                 c.sendGet(receivedTimestamp0);
                             } catch (URISyntaxException ex) {

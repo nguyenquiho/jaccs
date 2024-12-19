@@ -28,6 +28,7 @@ import org.asteriskjava.manager.ManagerConnection;
 import org.asteriskjava.manager.ManagerConnectionFactory;
 import org.asteriskjava.manager.ManagerConnectionState;
 import org.asteriskjava.manager.ManagerEventListener;
+import org.asteriskjava.manager.event.AbstractChannelEvent;
 import org.asteriskjava.manager.event.BridgeEvent;
 import org.asteriskjava.manager.event.CdrEvent;
 import org.asteriskjava.manager.event.CelEvent;
@@ -125,7 +126,13 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         Runnable task = () -> {
             long receivedTimestamp0 = System.currentTimeMillis() / 1000;
             String eventName = event.getClass().getSimpleName();
-
+            
+            String uniqueId = "";
+            if (event instanceof AbstractChannelEvent) {
+            AbstractChannelEvent channelEvent = (AbstractChannelEvent) event;
+                uniqueId = channelEvent.getUniqueId();
+            }
+            System.out.println("UNIQUEID: " + uniqueId + " - EVENT: " + eventName + " - TIMESTAMP: " + System.currentTimeMillis() / 1000);
             try {
                 switch (eventName) {
                     case "CelEvent":
@@ -156,7 +163,7 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                         handleLocalBridgeEvent((LocalBridgeEvent) event);
                         break;
                     case "ExtensionStatusEvent":
-                        handleExtensionStatusEvent((ExtensionStatusEvent) event, (CdrEvent) event, receivedTimestamp0);
+                        handleExtensionStatusEvent((ExtensionStatusEvent) event, receivedTimestamp0);
                         break;
                     case "TransferEvent":
                         handleTransferEvent((TransferEvent) event);
@@ -959,35 +966,34 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         MyMemcached.getInstance().set("LocalBridgeEvent_" + ev.getUniqueId2(), ev.getUniqueId1(), new Date(System.currentTimeMillis() + 1800000));
     }
 
-    private void handleExtensionStatusEvent(ExtensionStatusEvent ev, CdrEvent cdrEv, long receivedTimestamp0) {
+    private void handleExtensionStatusEvent(ExtensionStatusEvent ev, long receivedTimestamp0) {
         try {
             JobInternal ext_status = new JobInternal();
             ext_status.addParam("event", "ExtensionStatus");
             ext_status.addParam("hint", ev.getHint());
             ext_status.addParam("exten", ev.getExten());
-            ext_status.addParam("status", String.valueOf(ev.getStatus()));
+            ext_status.addParam("status", String.valueOf(ev.getStatus()));    
             ext_status.addParam("status_ext", ev.getStatustext());
             ext_status.QueuePut();
             
-            
-            String datereceived = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getDateReceived());
-            String url;
-            Callback c;
-            String site_id = DBSelectionSet.getInstance().getSiteIdBycalluuid(cdrEv.getUniqueId());
-            if (site_id != null && !"".equals(site_id)) {
-                HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
-                if (site != null) {
-                    //------------------------------------------------
-                    url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                    c = new Callback(url);
-                    c.addParam("event", "ExtensionStatus");
-                    c.addParam("hint", ev.getHint());
-                    c.addParam("exten", ev.getExten());
-                    c.addParam("status", String.valueOf(ev.getStatus()));
-                    c.addParam("status_ext", ev.getStatustext());
-                    c.sendGet(receivedTimestamp0);
-                }
-            }
+//            String datereceived = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getDateReceived());
+//            String url;
+//            Callback c;
+//            String site_id = DBSelectionSet.getInstance().getSiteIdBycalluuid(ExtensionStatusEvent.getUniqueId());
+//            if (site_id != null && !"".equals(site_id)) {
+//                HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
+//                if (site != null) {
+//                    //------------------------------------------------
+//                    url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+//                    c = new Callback(url);
+//                    c.addParam("event", "ExtensionStatus");
+//                    c.addParam("hint", ev.getHint());
+//                    c.addParam("exten", ev.getExten());
+//                    c.addParam("status", String.valueOf(ev.getStatus()));
+//                    c.addParam("status_ext", ev.getStatustext());
+//                    c.sendGet(receivedTimestamp0);
+//                }
+//            }
         } catch (Exception ex) {
             //System.out.println(ex.getClass().getName() + ": " + ex.getMessage());
         }

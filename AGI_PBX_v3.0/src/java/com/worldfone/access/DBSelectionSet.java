@@ -1228,7 +1228,69 @@ public class DBSelectionSet {
         return t + "," + d + ",1";
     }
     
-        public Integer getMaxChannelConfig() {
+    //
+    public boolean setCallidWeb360(String uniqueid, String callid_web360) {
+        //Mysql
+        MysqlConnection.getInstance().executeNonQuery("INSERT INTO `pbx_callid_web360_temp`(`uniqueid`,`callid_web360`) VALUES (?,?)", uniqueid, callid_web360);
+        return true;        
+        //Memcached
+//        MyMemcached.getInstance().set("callid_web360_" + uniqueid, callid_web360, new Date(System.currentTimeMillis() + 60000));
+//        return RedisConnection.getInstance().set("callid_web360_" + uniqueid, callid_web360);
+    }
+    
+    public String getCallidWeb360(String uniqueid) {
+        String callid_web360 = null;
+        try {
+            return callid_web360 = MysqlConnection.getInstance().getColumnByQuery("SELECT `callid_web360` FROM `pbx_callid_web360_temp` WHERE `uniqueid`=? LIMIT 1", "callid_web360", uniqueid);
+        } catch (JedisException ex) {
+            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
+        }
+        return null;
+    }
+    
+    public Integer getNcall() {
+        try {
+            HashMap rs = MysqlConnection.getInstance().getOneByQuery("SELECT `ncalls` FROM `pbx_ncalls` ORDER BY `id` DESC LIMIT 1");
+            return Integer.valueOf((rs.get("ncalls").toString()));
+        } catch (JedisException ex) {
+            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
+        }
+        return null;
+    }
+    
+    public Integer getCountCurCall() {
+        try {
+            HashMap rs = MysqlConnection.getInstance().getOneByQuery("SELECT `curcalls` FROM `pbx_ncalls` ORDER BY `id` DESC LIMIT 1");
+            if(rs.get("curcalls") != null){
+                return Integer.valueOf((rs.get("curcalls").toString()));
+            }else{
+                return null;
+            }
+        } catch (JedisException ex) {
+            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
+        }
+        return null;
+    }
+    
+    public boolean getNcallConfig() {
+        try {
+            HashMap rs = MysqlConnection.getInstance().getOneByQuery("SELECT `enable` FROM `pbx_ncalls` ORDER BY `id` DESC LIMIT 1");
+            String enable = rs.get("enable").toString();
+            Integer number_e = Integer.valueOf(enable);
+            if(number_e > 0){
+                return true;
+            }else{
+                return false;
+            }
+        } catch (JedisException ex) {
+            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
+        }
+        return false;
+    }
+    
+    //
+    
+    public Integer getMaxChannelConfig() {
         try {
             HashMap rs = MysqlConnection.getInstance().getOneByQuery("SELECT `value` FROM `pbx_setting` where `keyboard` = 'channel' LIMIT 1");
             String channel_str = rs.get("value").toString();
