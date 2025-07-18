@@ -1321,4 +1321,45 @@ public class DBSelectionSet {
         return null;
     }
     
+    public void logDialId(String calluuid, String dialid) {
+        try {
+            String cache_key = "dialid_" + calluuid;
+            HashMap data_cache = new HashMap();
+            data_cache.put("dialid", dialid);
+            
+            String json = JSONObject.valueToString(data_cache);
+            MyMemcached.getInstance().set(cache_key, json, new Date(System.currentTimeMillis() + 60000));
+//            System.out.println("Set Dialid successfully! " + "dialid_"+ calluuid + ":" + dialid);
+       } catch (JSONException ex) {
+            System.out.println(ex.getMessage());
+        }
+    }
+    
+    public String getDialId(String calluuid) {
+        try {
+            String cache_key = "dialid_" + calluuid;
+            Object oCache = MyMemcached.getInstance().get(cache_key); // Lấy Object thay vì gọi toString ngay
+            if (oCache == null) {
+//                System.out.println("Cache key not found: " + cache_key);
+                return "";
+            }
+
+            String oCacheStr = oCache.toString();
+            JSONObject dataCache = new JSONObject(oCacheStr);
+            String dialId = dataCache.optString("dialid", null); // Sử dụng optString để tránh NullPointer
+            if (dialId == null) {                               
+//                System.out.println("Dialid not found in cache for key: " + cache_key);
+                return "";
+            }
+
+//            System.out.println("Get Dialid successfully! " + cache_key + ":" + dialId);
+            return dialId;
+        } catch (JSONException ex) {
+            System.out.println("JSONException: " + ex.getMessage());
+        } catch (Exception ex) {
+            System.out.println("Unexpected error: " + ex.getMessage());
+        }
+        return "";
+    }
+    
 }

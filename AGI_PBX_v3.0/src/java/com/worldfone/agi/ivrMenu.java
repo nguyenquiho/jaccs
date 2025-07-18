@@ -22,6 +22,16 @@ public class ivrMenu extends BaseAgiScript {
     @Override
     public void service(AgiRequest ar, AgiChannel ac) {
         try {
+            // Ho add job put callin ivr
+            System.out.println("put job ivr");
+            JobUseraction JobCallinIVR = new JobUseraction();
+            JobCallinIVR.addParam("calluuid", ar.getUniqueId());
+            JobCallinIVR.addParam("callernumber", ar.getCallerIdNumber());
+            JobCallinIVR.addParam("calltype", "callin_ivr");
+            System.out.println(JobCallinIVR);
+            JobCallinIVR.QueuePut();
+                            
+                            
             String menu_id = ar.getArguments()[1];
             HashMap rs = DBSelectionSet.getInstance().getIvrMenuDestination(menu_id);
             String no_sel = "";
@@ -86,32 +96,82 @@ public class ivrMenu extends BaseAgiScript {
                             }
                         }
                     }
+                    
+                    String goToContext = "";
                     if (!"?".equals(key)) {
                         if (!"0".equals(des)) {
                             ac.verbose("An dung phim", 1);
-                            String goToContext = DBSelectionSet.getInstance().createContextGoto(type, des);
+                            goToContext = DBSelectionSet.getInstance().createContextGoto(type, des);
+                            
+                            // Ho add job put useraction
+                            JobUseraction jobActionKey = new JobUseraction();
+                            jobActionKey.addParam("calluuid", ar.getUniqueId());
+                            jobActionKey.addParam("calltype", "ivr");
+                            jobActionKey.addParam("useraction", digito);
+                            if(goToContext != null || !"".equals(goToContext)){
+                                jobActionKey.addParam("goto_context", goToContext);
+                                jobActionKey.addParam("message", "Valid selection");
+                            }
+                            System.out.println(jobActionKey);
+                            jobActionKey.QueuePut();
+                            
                             ac.exec("Goto", goToContext);
                         }
                     } else {
                         if ("0".equals(des)) {
                             String sk = DBSelectionSet.getInstance().getAgentID(digito);
                             if (null == sk) {
-                                String goToContext = DBSelectionSet.getInstance().createContextGoto(invalid_sel, invalid_sel_detail);
+                                goToContext = DBSelectionSet.getInstance().createContextGoto(invalid_sel, invalid_sel_detail);
+                                
+                                // Ho add job put useraction
+                                JobUseraction jobActionKey = new JobUseraction();
+                                jobActionKey.addParam("calluuid", ar.getUniqueId());
+                                jobActionKey.addParam("calltype", "ivr");
+                                jobActionKey.addParam("useraction", digito);
+                                if(goToContext != null || !"".equals(goToContext)){
+                                    jobActionKey.addParam("goto_context", goToContext);
+                                    jobActionKey.addParam("message", "Invalid selection");
+                                }
+                                System.out.println(jobActionKey);
+                                jobActionKey.QueuePut(); 
+                                
                                 ac.exec("Goto", goToContext);
                                 ac.verbose("An sai phim, set key nhung ma sai so noi bo", 1);
                             } else {
                                 if (null == type) {
                                     ac.verbose("sai destination", 1);
                                 } else {
+                                    JobUseraction jobActionKey = new JobUseraction();
                                     switch (type) {
                                         case "internal":
+                                            
+                                            // Ho add job put useraction
+                                            jobActionKey.addParam("calluuid", ar.getUniqueId());
+                                            jobActionKey.addParam("calltype", "ivr");
+                                            jobActionKey.addParam("useraction", digito);
+                                            jobActionKey.addParam("goto_context", "internal," + digito);
+                                            jobActionKey.addParam("message", "Ïnvalid selection, route to internal");
+                                            System.out.println(jobActionKey);
+                                            jobActionKey.QueuePut(); 
+                                            
                                             ac.exec("Goto", "internal," + digito + ",1");
                                             ac.verbose("Di theo so noi bo", 1);
                                             break;
                                         case "externalcrm":
                                             String dest_id = DBSelectionSet.getInstance().checkExternal(digito);
                                             if (dest_id != null) {
-                                                String goToContext = DBSelectionSet.getInstance().createContextGoto("externalcrm", dest_id);
+                                                goToContext = DBSelectionSet.getInstance().createContextGoto("externalcrm", dest_id);
+                                                
+                                                // Ho add job put useraction
+                                                jobActionKey.addParam("calluuid", ar.getUniqueId());
+                                                jobActionKey.addParam("calltype", "ivr");
+                                                jobActionKey.addParam("useraction", digito);
+                                                if(goToContext != null || !"".equals(goToContext)){
+                                                    jobActionKey.addParam("goto_context", goToContext);
+                                                    jobActionKey.addParam("message", "Ïnvalid selection, route to externalcrm");
+                                                }
+                                                System.out.println(jobActionKey);
+                                                
                                                 ac.exec("Goto", goToContext);
                                                 ac.verbose("Di theo so noi bo - eCrm", 1);
                                             }
@@ -123,11 +183,33 @@ public class ivrMenu extends BaseAgiScript {
                                 }
                             }
                         } else {
-                            String goToContext = DBSelectionSet.getInstance().createContextGoto(type, des);
+                            goToContext = DBSelectionSet.getInstance().createContextGoto(type, des);
+                            
+                            // Ho add job put useraction
+                            JobUseraction jobActionKey = new JobUseraction();
+                            jobActionKey.addParam("calluuid", ar.getUniqueId());
+                            jobActionKey.addParam("calltype", "ivr");
+                            jobActionKey.addParam("useraction", digito);
+                            if(goToContext != null || !"".equals(goToContext)){
+                                jobActionKey.addParam("goto_context", goToContext);
+                                jobActionKey.addParam("message", "Ïnvalid selection, no set key");
+                            }
+                            System.out.println(jobActionKey);
+                            jobActionKey.QueuePut(); 
+                            
                             ac.exec("Goto", goToContext);
                             ac.verbose("An sai phim,co ? va khong set key", 1);
                         }
                     }
+                    
+                    JobUseraction jobActionKey = new JobUseraction();
+                    jobActionKey.addParam("calluuid", ar.getUniqueId());
+                    jobActionKey.addParam("calltype", "ivr");
+                    jobActionKey.addParam("useraction", key);
+                    if(goToContext != null || !"".equals(goToContext)){
+                        jobActionKey.addParam("goto_context", goToContext);
+                    }
+                    jobActionKey.QueuePut();        
                 } else {
                     ac.verbose("k set phim va k co ?", 1);
                     String goToContext = DBSelectionSet.getInstance().createContextGoto(invalid_sel, invalid_sel_detail);

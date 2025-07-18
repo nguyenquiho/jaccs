@@ -132,7 +132,7 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             AbstractChannelEvent channelEvent = (AbstractChannelEvent) event;
                 uniqueId = channelEvent.getUniqueId();
             }
-            System.out.println("UNIQUEID: " + uniqueId + " - EVENT: " + eventName + " - TIMESTAMP: " + System.currentTimeMillis() / 1000);
+            System.out.println(uniqueId + " " + eventName + " " + System.currentTimeMillis() / 1000);
             try {
                 switch (eventName) {
                     case "CelEvent":
@@ -323,6 +323,10 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                     calluuid = curcdr.get("parent_calluuid");
                 }
                 String call_des = ev.getCallerId2();
+                System.out.println("CALL DESSSSSSSSSS " + call_des);
+                System.out.println("CHANNEL 11111111 " + ev.getChannel1());
+                System.out.println("CHANNEL 22222222" + ev.getChannel2());
+                System.out.println("CURCDRRRRRRRRRRR" + curcdr);
                 if (ev.getCallerId2() == null || "".equals(ev.getCallerId2())) {
                     String channel2 = ev.getChannel2();
                     if (channel2.startsWith("Local")) {
@@ -349,6 +353,8 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                     c.addParam("agentname", agentname);
                 }
                 c.addParam("destinationnumber", call_des);
+                String dialid = DBSelectionSet.getInstance().getDialId(calluuid);
+                c.addParam("dialid", dialid);
                 c.addParam("version", "3");
                 c.sendGet(receivedTimestamp0, 1);
             } else {
@@ -686,7 +692,9 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                         c.addParam("calltype", ev.getCalltype());
                         c.addParam("dialid", ev.getDialid());
                         c.addParam("version", "3");
-                        c.sendGet(receivedTimestamp0);
+                        if (!ev.getLastApplication().trim().toLowerCase().contains("musiconhold")) {
+                            c.sendGet(receivedTimestamp0);
+                        }
                     } catch (NullPointerException ex) {
                         //System.out.println(ex.getClass().getName() + ": " + ex.getMessage());
                     }
@@ -771,7 +779,7 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                                     } else {
                                         c.addParam("disposition", ev.getDisposition());
                                     }
-                                }
+                                } 
                                 c.addParam("version", "3");
                                 c.sendGet(receivedTimestamp0);
                             }
@@ -976,23 +984,19 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             ext_status.addParam("status_ext", ev.getStatustext());
             ext_status.QueuePut();
             
-//            String datereceived = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getDateReceived());
+            // Put ExtensionStatus for 4xs
 //            String url;
 //            Callback c;
-//            String site_id = DBSelectionSet.getInstance().getSiteIdBycalluuid(ExtensionStatusEvent.getUniqueId());
-//            if (site_id != null && !"".equals(site_id)) {
-//                HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
-//                if (site != null) {
-//                    //------------------------------------------------
-//                    url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-//                    c = new Callback(url);
-//                    c.addParam("event", "ExtensionStatus");
-//                    c.addParam("hint", ev.getHint());
-//                    c.addParam("exten", ev.getExten());
-//                    c.addParam("status", String.valueOf(ev.getStatus()));
-//                    c.addParam("status_ext", ev.getStatustext());
-//                    c.sendGet(receivedTimestamp0);
-//                }
+//            ArrayList<HashMap> sites = DBSelectionSet.getInstance().getAllSite();
+//            for (HashMap<String, String> site : sites) {
+//                url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+//                c = new Callback(url);
+//                c.addParam("event", "ExtensionStatus");
+//                c.addParam("hint", ev.getHint());
+//                c.addParam("exten", ev.getExten());
+//                c.addParam("status", String.valueOf(ev.getStatus()));
+//                c.addParam("status_ext", ev.getStatustext());
+//                c.sendGet(receivedTimestamp0);
 //            }
         } catch (Exception ex) {
             //System.out.println(ex.getClass().getName() + ": " + ex.getMessage());

@@ -109,6 +109,7 @@ public class crmoutbound extends BaseAgiScript {
                                         c.addParam("calltype", calltype);
                                         if (dialid != null && !"".equals(dialid)) {
                                             c.addParam("dialid", dialid);
+                                            DBSelectionSet.getInstance().logDialId(calluuid, dialid);
                                         }
                                         c.addParam("version", "3");
                                         c.sendGet(receivedTimestamp0);
