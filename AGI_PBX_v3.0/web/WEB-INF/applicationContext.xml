@@ -38,10 +38,10 @@
                 <entry key="agi_crminbound" value-ref="agi_crminbound" />
                 <entry key="agi_crmoutbound" value-ref="agi_crmoutbound" />
                 <entry key="agi_check_externalcrm" value-ref="agi_check_externalcrm" />
-                <entry key="agi_push_notification" value-ref="agi_push_notification" />
                 <entry key="agi_queue_status" value-ref="agi_queue_status" />
                 <entry key="agi_crmoutbound_acd" value-ref="agi_crmoutbound_acd" />
                 <entry key="agi_ivr_playback_process" value-ref="agi_ivr_playback_process" />
+                <entry key="agi_push_notification" value-ref="agi_push_notification" />
             </map>
         </property>
     </bean>
@@ -63,8 +63,8 @@
     <bean id="agi_crminbound" class="com.worldfone.agi.crminbound"></bean>
     <bean id="agi_crmoutbound" class="com.worldfone.agi.crmoutbound"></bean>
     <bean id="agi_check_externalcrm" class="com.worldfone.agi.check_externalcrm"></bean>
-    <bean id="agi_push_notification" class="com.worldfone.agi.push_notification"></bean>
     <bean id="agi_queue_status" class="com.worldfone.agi.queue_status"></bean>
     <bean id="agi_crmoutbound_acd" class="com.worldfone.agi.crmoutbound_acd"></bean>
     <bean id="agi_ivr_playback_process" class="com.worldfone.agi.ivrPlayback"></bean>
+    <bean id="agi_push_notification" class="com.worldfone.agi.push_notification"></bean>
 </beans>

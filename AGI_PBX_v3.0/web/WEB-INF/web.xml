@@ -6,21 +6,22 @@
     </context-param>
     <listener>
         <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+        <!--<listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>-->
     </listener>
-        <listener>
+    <listener>
         <listener-class>com.worldfone.agi.generateLicenseKey</listener-class>
     </listener>
     <servlet>
         <servlet-name>dispatcher</servlet-name>
         <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
         <load-on-startup>2</load-on-startup>
-    </servlet>
+    </servlet> 
     <servlet>
         <servlet-name>generatelicensekey</servlet-name>
         <servlet-class>com.worldfone.agi.generateLicenseKey</servlet-class>
         <load-on-startup>3</load-on-startup>
     </servlet> 
-    <servlet-mapping>
+   <servlet-mapping>
         <servlet-name>dispatcher</servlet-name>
         <url-pattern>*.htm</url-pattern>
     </servlet-mapping>

@@ -37,9 +37,9 @@ public class check_externalcrm extends BaseAgiScript {
             
             if(ar.getArguments().length > 2){
                 callid_web360 = ar.getArguments()[2];
-                System.out.println("CALLID_WEB360 " + callid_web360);
+//                System.out.println("CALLID_WEB360 " + callid_web360);
             }
-            System.out.println("CALLID_WEB360 " + callid_web360);
+//            System.out.println("CALLID_WEB360 " + callid_web360);
             String now = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(Calendar.getInstance().getTime());
             String channel = ar.getChannel();
             //System.out.println("channel " + channel);

@@ -79,7 +79,7 @@ public class outbound extends BaseAgiScript {
                                     String timeout = DBSelectionSet.getInstance().getAgentCol(src, "timeout");
                                     if (timeout != null) {
                                         ac.setVariable("TIMEOUT(absolute)", timeout);
-                                    }
+                                    } 
                                     ac.verbose("Di qua agi outbound", 1);
                                     ac.exec("Goto", "lcr," + dst + ",1");
                                 } else {

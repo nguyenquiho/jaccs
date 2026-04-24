@@ -79,11 +79,26 @@ public class crmoutbound extends BaseAgiScript {
                                         agent_name = extension_info.get("callername").toString();
                                     }
                                 }
-                                if (dnis.equalsIgnoreCase(calldest)) {
-//                                    ac.verbose("ifffffffffffff 9", 1);
+//                                if (dnis.equalsIgnoreCase(calldest)) { // line 82
+////                                    ac.verbose("ifffffffffffff 9", 1);
+//                                    String variable = ac.getVariable("ARG1");
+//                                    String[] arr_temp = variable.split("/");
+//                                    calldest = arr_temp[2];
+//                                }
+
+                                // thay doan code  tren
+                                if (dnis != null && calldest != null && dnis.equalsIgnoreCase(calldest)) { 
+                                    // ac.verbose("ifffffffffffff 9", 1);
                                     String variable = ac.getVariable("ARG1");
-                                    String[] arr_temp = variable.split("/");
-                                    calldest = arr_temp[2];
+
+                                    // Kiểm tra biến variable từ Asterisk có tồn tại không
+                                    if (variable != null && variable.contains("/")) {
+                                        String[] arr_temp = variable.split("/");
+                                        // Kiểm tra mảng có đủ phần tử không trước khi truy cập index 2
+                                        if (arr_temp.length >= 3) {
+                                            calldest = arr_temp[2];
+                                        }
+                                    }
                                 }
                                 DBSelectionSet.getInstance().logCurrentEvent(calluuid, dest.get("site_id"), calltype);
                                 if (dest.containsKey("callcenter_type")) {

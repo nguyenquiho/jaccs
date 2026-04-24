@@ -20,6 +20,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.json.JSONArray;
@@ -1231,7 +1233,12 @@ public class DBSelectionSet {
     //
     public boolean setCallidWeb360(String uniqueid, String callid_web360) {
         //Mysql
-        MysqlConnection.getInstance().executeNonQuery("INSERT INTO `pbx_callid_web360_temp`(`uniqueid`,`callid_web360`) VALUES (?,?)", uniqueid, callid_web360);
+        
+//        if (!tableExists("pbx_callid_web360_temp")) {
+//                System.out.println("Bảng không tồn tại, bỏ qua xử lý.");
+//                return false;
+//            }
+//        MysqlConnection.getInstance().executeNonQuery("INSERT INTO `pbx_callid_web360_temp`(`uniqueid`,`callid_web360`) VALUES (?,?)", uniqueid, callid_web360);
         return true;        
         //Memcached
 //        MyMemcached.getInstance().set("callid_web360_" + uniqueid, callid_web360, new Date(System.currentTimeMillis() + 60000));
@@ -1240,23 +1247,35 @@ public class DBSelectionSet {
     
     public String getCallidWeb360(String uniqueid) {
         String callid_web360 = null;
-        try {
-            return callid_web360 = MysqlConnection.getInstance().getColumnByQuery("SELECT `callid_web360` FROM `pbx_callid_web360_temp` WHERE `uniqueid`=? LIMIT 1", "callid_web360", uniqueid);
-        } catch (JedisException ex) {
-            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
-        }
+//        try {
+//            if (!tableExists("pbx_callid_web360_temp")) {
+//                System.out.println("Bảng không tồn tại, bỏ qua xử lý.");
+//                return null;
+//            }
+//            return callid_web360 = MysqlConnection.getInstance().getColumnByQuery("SELECT `callid_web360` FROM `pbx_callid_web360_temp` WHERE `uniqueid`=? LIMIT 1", "callid_web360", uniqueid);
+//        } catch (JedisException ex) {
+//            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
+//        }
         return null;
     }
     
-    public Integer getNcall() {
-        try {
-            HashMap rs = MysqlConnection.getInstance().getOneByQuery("SELECT `ncalls` FROM `pbx_ncalls` ORDER BY `id` DESC LIMIT 1");
-            return Integer.valueOf((rs.get("ncalls").toString()));
-        } catch (JedisException ex) {
-            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
-        }
-        return null;
-    }
+//    public String getCallidWeb360(String uniqueid) {
+//        try {
+//            // Chạy thẳng lệnh SELECT
+//            return MysqlConnection.getInstance().getColumnByQuery(
+//                "SELECT `callid_web360` FROM `pbx_callid_web360_temp` WHERE `uniqueid`=? LIMIT 1", 
+//                "callid_web360", uniqueid);
+//        } catch (Exception ex) {
+//            // Kiểm tra nếu thông báo lỗi chứa cụm từ "doesn't exist"
+//            if (ex.getMessage().contains("doesn't exist")) {
+//                System.out.println("Bảng pbx_callid_web360_temp chưa được tạo hoặc đã bị xóa.");
+//                return null;
+//            }
+//            // Các lỗi SQL khác
+//            ex.printStackTrace();
+//        }
+//        return null;
+//    }
     
     public Integer getCountCurCall() {
         try {
@@ -1288,7 +1307,27 @@ public class DBSelectionSet {
         return false;
     }
     
-    //
+    public boolean getRetryCallFailConfg() {
+        try {
+            HashMap rs = MysqlConnection.getInstance().getOneByQuery(
+                "SELECT `value` FROM `pbx_setting` WHERE `keyboard` = 'enable_retry_call_fail' LIMIT 1"
+            );
+            
+            if (rs == null || rs.get("value") == null) {
+                // Trả về giá trị mặc định (hoặc xử lý lỗi tùy theo yêu cầu)
+                return false;
+            }
+            
+            // Lấy giá trị từ HashMap và chuyển đổi sang boolean
+            String value = (String) rs.get("value");
+            // Chuyển đổi chuỗi thành boolean
+            return parseBooleanValue(value);
+        } catch (Exception e) {
+            // Xử lý ngoại lệ (ví dụ: lỗi kết nối MySQL)
+            System.err.println("Error retrieving enable_retry_call_fail: " + e.getMessage());
+            return false; // Giá trị mặc định khi có lỗi
+        }
+    }
     
     public Integer getMaxChannelConfig() {
         try {
@@ -1360,6 +1399,136 @@ public class DBSelectionSet {
             System.out.println("Unexpected error: " + ex.getMessage());
         }
         return "";
+    }
+    
+    // retry trunk failed call
+    public HashMap<String, String> getDNCO(String number) {
+        try {
+            List<String> dnco = RedisConnection.getInstance().HMGet("pbx_dnco_list_" + number, "id", "groups", "status");
+            if (dnco.get(0) != null) {
+                HashMap<String, String> info = new HashMap();
+                info.put("id", dnco.get(0));
+                info.put("groups", dnco.get(1));
+                info.put("status", dnco.get(2));
+                return info;
+            }
+            return null;
+        } catch (JedisException ex) {
+            System.out.println(ex);
+            return MysqlConnection.getInstance().getOneByQuery("SELECT `id`, `groups`, `status` FROM `dnco_list` WHERE `number`='" + number + "' OR `number`='0" + number + "'");
+        }
+    }
+
+    public String FindOperator(String phone) {
+        try {
+            String pbx_carriers = RedisConnection.getInstance().get("pbx_carriers");
+            if (pbx_carriers != null) {
+                JSONArray arr = new JSONArray(pbx_carriers);
+                for (int i = 0; i < arr.length(); i++) {
+                    String prefix_lists = arr.getJSONObject(i).get("prefix_lists").toString();
+                    if (!prefix_lists.isEmpty()) {
+                        JSONArray arrPrefix = new JSONArray(prefix_lists);
+                        for (int j = 0; j < arrPrefix.length(); j++) {
+                            String prefix = arrPrefix.getString(j);
+                            if (!prefix.startsWith("^")) {
+                                prefix = "^".concat(prefix);
+                            }
+                            if (phone.matches(prefix + "(.*)")) {
+                                return arr.getJSONObject(i).get("name").toString();
+                            }
+                        }
+                    }
+                }
+            } else {
+                System.out.println("Carrier Redis null");
+                throw new Exception("Ex");
+            }
+        } catch (JedisException | JSONException ex) {
+            System.out.println(Thread.currentThread().getName().concat("--").concat(ex.getMessage()));
+            String sql = "SELECT * FROM `pbx_carriers`";
+            ArrayList<HashMap> ls = MysqlConnection.getInstance().getListByQuery(sql);
+            for (HashMap<String, String> it : ls) {
+                String prefix_lists = it.get("prefix_lists");
+                if (!prefix_lists.isEmpty()) {
+                    try {
+                        JSONArray arrPrefix = new JSONArray(prefix_lists);
+                        for (int j = 0; j < arrPrefix.length(); j++) {
+                            String prefix = arrPrefix.getString(j);
+                            if (!prefix.startsWith("^")) {
+                                prefix = "^".concat(prefix);
+                            }
+                            if (phone.matches(prefix + "(.*)")) {
+                                return it.get("name");
+                            }
+                        }
+                    } catch (JSONException ex1) {
+                        Logger.getLogger(com.worldfone.access.DBSelectionSet.class.getName()).log(Level.SEVERE, null, ex1);
+                    }
+
+                }
+            }
+        } catch (Exception ex) {
+            String sql = "SELECT * FROM `pbx_carriers`";
+            ArrayList<HashMap> ls = MysqlConnection.getInstance().getListByQuery(sql);
+            for (HashMap<String, String> it : ls) {
+                String prefix_lists = it.get("prefix_lists");
+                if (!prefix_lists.isEmpty()) {
+                    try {
+                        JSONArray arrPrefix = new JSONArray(prefix_lists);
+                        for (int j = 0; j < arrPrefix.length(); j++) {
+                            String prefix = arrPrefix.getString(j);
+                            if (!prefix.startsWith("^")) {
+                                prefix = "^".concat(prefix);
+                            }
+                            if (phone.matches(prefix + "(.*)")) {
+                                return it.get("name");
+                            }
+                        }
+                    } catch (JSONException ex1) {
+                        Logger.getLogger(com.worldfone.access.DBSelectionSet.class.getName()).log(Level.SEVERE, null, ex1);
+                    }
+
+                }
+            }
+        }
+        return "unknown";
+    }
+    
+    public String getRandDidInTrunkGroup(String trunk_id) {
+//        try {
+//            return RedisConnection.getInstance().sRanmember("pbx_group_trunks:" + trunk_id);
+//        } catch (JedisException ex) {
+//            System.out.println(ex);
+            StringBuilder build = new StringBuilder();
+            build.append("SELECT `did_number` ");
+            build.append("FROM `pbx_group_trunks` ");
+            build.append("WHERE `trunk_id`=? ");
+            build.append("ORDER BY RAND() ");
+            build.append("LIMIT 1");
+            return MysqlConnection.getInstance().getColumnByQuery(build.toString(), "did_number", trunk_id);
+//        }
+    }
+    
+    // end
+
+    private boolean parseBooleanValue(String value) {
+        if (value == null) {
+            return false; // Giá trị mặc định nếu null
+        }
+        // Chuyển đổi chuỗi thành boolean
+        String normalized = value.trim().toLowerCase();
+        return "true".equals(normalized) || "1".equals(normalized);
+    }
+    
+    public boolean tableExists(String tableName) {
+        try {
+            // Check chính xác trong schema 'pbx'
+            String checkQuery = "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'pbx' AND TABLE_NAME = '" + tableName + "'";
+            ArrayList<HashMap> result = MysqlConnection.getInstance().getListByQuery(checkQuery);
+            return result != null && !result.isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
     }
     
 }
