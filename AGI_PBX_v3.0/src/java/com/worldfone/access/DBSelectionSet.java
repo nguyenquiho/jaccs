@@ -1531,4 +1531,32 @@ public class DBSelectionSet {
         }
     }
     
+    public String checkLcrCarriers(String dst) {
+        String query = "SELECT `prefix_lists` FROM `pbx_carriers` WHERE JSON_CONTAINS(`prefix_lists`, ?) LIMIT 1";
+        String jsonDst = String.format("[\"%s\"]", dst);
+        try {
+            String data = MysqlConnection.getInstance().getColumnByQuery(query, "prefix_lists", jsonDst);
+            if ("null".equals(data)) {
+                return null;
+            }
+            return data;
+        } catch (Exception e) {
+            System.err.println("[ERROR]: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
+    public String getExtByChannel(String value) {
+        String query = "SELECT `channel` FROM `blindtransfer` WHERE `value` = ? LIMIT 1";
+        String data = null;
+        try {
+            data = MysqlConnection.getInstance().getColumnByQuery(query, "channel", value);
+        } catch (Exception e) {
+            System.err.println("[ERROR]: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return data;
+    }
+    
 }
