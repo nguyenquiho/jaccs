@@ -1052,6 +1052,7 @@ public class DBSelectionSet {
         } catch (JSONException | JedisException ex) {
             System.out.println(ex);
         }
+        
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT `ug`.`lcrgroup`, `ug`.`nDNC` ");
         sql.append("FROM `sipusers` AS sip ");

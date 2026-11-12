@@ -17,6 +17,8 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Properties;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 
 /**
  *
@@ -24,11 +26,12 @@ import java.util.Properties;
  */
 public class MysqlConnection {
 
-    private String dbHost = "localhost";
-    private String dbPort = "3306";
-    private String dbName = "pbx";
-    private String dbUsername = "root";
-    private String dbPassword = "QWQIWI";
+    static final Logger logger = LogManager.getLogger("CrmEvent");
+    private static String dbHost = "127.0.0.1";
+    private static String dbPort = "3306";
+    private static String dbName = "pbx";
+    private static String dbUsername = "root";
+    private static String dbPassword = "QWQIWI";
 
     private MysqlDataSource ds = null;
 
@@ -59,33 +62,103 @@ public class MysqlConnection {
      *
      * @return MysqlDataSource
      */
-    private MysqlDataSource getMySQLDataSource() {
+//    private MysqlDataSource getMySQLDataSource() {
+//        Properties props = new Properties();
+//        try {
+//            FileInputStream in = new FileInputStream("/opt/tomcat9/webapps/ECRM_PBX_Config.properties");
+//            props.load(in);
+//            if (props.containsKey("db.host")) {
+//                dbHost = props.getProperty("db.host");
+//            }
+//            if (props.containsKey("db.port")) {
+//                dbPort = props.getProperty("db.port");
+//            }
+//            if (props.containsKey("db.name")) {
+//                dbName = props.getProperty("db.name");
+//            }
+//            if (props.containsKey("db.user")) {
+//                dbUsername = props.getProperty("db.user");
+//            }
+//            if (props.containsKey("db.pass")) {
+//                dbPassword = props.getProperty("db.pass");
+//            }
+//        } catch (MalformedURLException ex) {
+//            System.out.println(ex.getMessage());
+//        } catch (IOException ex) {
+//            System.out.println(ex.getMessage());
+//        }
+//        MysqlDataSource _ds = new MysqlDataSource();
+//        String url = "jdbc:mysql://" + dbHost + ":" + dbPort + "/" + dbName + "?user=" + dbUsername + "&password=" + dbPassword + "&useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&failOverReadOnly=false&maxReconnects=10";
+//        _ds.setURL(url);
+//        return _ds;
+//    }
+    
+    private static MysqlDataSource getMySQLDataSource() {
         Properties props = new Properties();
+        System.out.println("=== BẮT ĐẦU KIỂM TRA CẤU HÌNH DATABASE ===");
+        
         try {
-            FileInputStream in = new FileInputStream("/opt/tomcat9/webapps/ECRM_PBX_Config.properties");
+            String filePath = "/opt/tomcat9/webapps/ECRM_PBX_Config.properties";
+            System.out.println("ECRM đang thử đọc file cấu hình tại: " + filePath);
+            
+            FileInputStream in = new FileInputStream(filePath);
             props.load(in);
+            System.out.println("Đọc file properties THÀNH CÔNG. Đang kiểm tra các key...");
+
             if (props.containsKey("db.host")) {
                 dbHost = props.getProperty("db.host");
+                System.out.println("[Properties] Lấy db.host từ file: " + dbHost);
+            } else {
+                System.out.println("[Default] Thiếu db.host trong file, dùng mặc định code: " + dbHost);
+                logger.error("Missing db.host");
             }
+
             if (props.containsKey("db.port")) {
                 dbPort = props.getProperty("db.port");
+                System.out.println("[Properties] Lấy db.port từ file: " + dbPort);
+            } else {
+                System.out.println("[Default] Thiếu db.port trong file, dùng mặc định code: " + dbPort);
+                logger.error("Missing db.port");
             }
+
             if (props.containsKey("db.name")) {
                 dbName = props.getProperty("db.name");
+                System.out.println("[Properties] Lấy db.name từ file: " + dbName);
+            } else {
+                System.out.println("[Default] Thiếu db.name trong file, dùng mặc định code: " + dbName);
+                logger.error("Missing db_name");
             }
+
             if (props.containsKey("db.user")) {
                 dbUsername = props.getProperty("db.user");
+                System.out.println("[Properties] Lấy db.user từ file: " + dbUsername);
+            } else {
+                System.out.println("[Default] Thiếu db.user trong file, dùng mặc định code: " + dbUsername);
+                logger.error("Missing db.user");
             }
+
             if (props.containsKey("db.pass")) {
                 dbPassword = props.getProperty("db.pass");
+                System.out.println("[Properties] Lấy db.pass từ file: ****** (đã che)");
+            } else {
+                System.out.println("[Default] Thiếu db.pass trong file, dùng mặc định code: ****** (đã che)");
+                logger.error("Missing db.pass");
             }
+
         } catch (MalformedURLException ex) {
-            System.out.println(ex.getMessage());
+            System.out.println("[Error] Sai định dạng đường dẫn file properties. Sẽ dùng TOÀN BỘ cấu hình mặc định trong code!");
+            logger.error(ex);
         } catch (IOException ex) {
-            System.out.println(ex.getMessage());
+            System.out.println("[Error] Không tìm thấy hoặc không có quyền đọc file properties. Sẽ dùng TOÀN BỘ cấu hình mặc định trong code!");
+            logger.error("IOException khi doc file: " + ex.getMessage());
         }
-        MysqlDataSource _ds = new MysqlDataSource();
+
+        System.out.println("=== KẾT QUẢ CẤU HÌNH CUỐI CÙNG SẼ DÙNG ===");
+        System.out.println("-> Host: " + dbHost + " | Port: " + dbPort + " | DB: " + dbName + " | User: " + dbUsername);
+        System.out.println("==========================================");
+
         String url = "jdbc:mysql://" + dbHost + ":" + dbPort + "/" + dbName + "?user=" + dbUsername + "&password=" + dbPassword + "&useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&failOverReadOnly=false&maxReconnects=10";
+        MysqlDataSource _ds = new MysqlDataSource();
         _ds.setURL(url);
         return _ds;
     }

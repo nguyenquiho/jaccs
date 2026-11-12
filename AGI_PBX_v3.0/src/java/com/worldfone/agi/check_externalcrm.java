@@ -70,13 +70,13 @@ public class check_externalcrm extends BaseAgiScript {
                                 c.addParam("receivedtime", now);
                                 c.addParam("starttime", now);
                                 c.addParam("dnis", dnis);
-                                if(!"".equalsIgnoreCase(callid_web360)){ // EVNHCM
-                                    c.addParam("callid_web360", callid_web360);
-                                    boolean setCallidWeb360 = DBSelectionSet.getInstance().setCallidWeb360(calluuid, callid_web360);
-                                    if(!setCallidWeb360) System.out.println("DONT SET CALLID_WEB360" + calluuid);
-                                }else{
-                                    c.addParam("callid_web360", "no_web360");
-                                }
+//                                if(!"".equalsIgnoreCase(callid_web360)){ // EVNHCM
+//                                    c.addParam("callid_web360", callid_web360);
+//                                    boolean setCallidWeb360 = DBSelectionSet.getInstance().setCallidWeb360(calluuid, callid_web360);
+//                                    if(!setCallidWeb360) System.out.println("DONT SET CALLID_WEB360" + calluuid);
+//                                }else{
+//                                    c.addParam("callid_web360", "no_web360");
+//                                }
                                 c.addParam("version", "3");
                                 c.sendGet(receivedTimestamp0);
                             } catch (URISyntaxException ex) {

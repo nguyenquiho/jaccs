@@ -61,46 +61,68 @@ public class MysqlConnection {
      */
     private static MysqlDataSource getMySQLDataSource() {
         Properties props = new Properties();
+        System.out.println("=== BẮT ĐẦU KIỂM TRA CẤU HÌNH DATABASE ===");
+        
         try {
-            FileInputStream in = new FileInputStream("/opt/tomcat9/webapps/AGI_PBX_Config.properties");
+            String filePath = "/opt/tomcat9/webapps/AGI_PBX_Config.properties";
+            System.out.println("Đang thử đọc file cấu hình tại: " + filePath);
+            
+            FileInputStream in = new FileInputStream(filePath);
             props.load(in);
+            System.out.println("Đọc file properties THÀNH CÔNG. Đang kiểm tra các key...");
+
             if (props.containsKey("db.host")) {
                 dbHost = props.getProperty("db.host");
-//                System.out.print("DBHOST "+ dbHost);
-
+                System.out.println("[Properties] Lấy db.host từ file: " + dbHost);
             } else {
+                System.out.println("[Default] Thiếu db.host trong file, dùng mặc định code: " + dbHost);
                 logger.error("Missing db.host");
             }
+
             if (props.containsKey("db.port")) {
-//                System.out.print("DBPORT "+ dbPort);
                 dbPort = props.getProperty("db.port");
+                System.out.println("[Properties] Lấy db.port từ file: " + dbPort);
             } else {
+                System.out.println("[Default] Thiếu db.port trong file, dùng mặc định code: " + dbPort);
                 logger.error("Missing db.port");
             }
+
             if (props.containsKey("db.name")) {
                 dbName = props.getProperty("db.name");
-//                System.out.print("DBNAME "+ dbName);
+                System.out.println("[Properties] Lấy db.name từ file: " + dbName);
             } else {
+                System.out.println("[Default] Thiếu db.name trong file, dùng mặc định code: " + dbName);
                 logger.error("Missing db_name");
             }
+
             if (props.containsKey("db.user")) {
                 dbUsername = props.getProperty("db.user");
-//                System.out.print("DBUSER "+ dbUsername);
+                System.out.println("[Properties] Lấy db.user từ file: " + dbUsername);
             } else {
+                System.out.println("[Default] Thiếu db.user trong file, dùng mặc định code: " + dbUsername);
                 logger.error("Missing db.user");
-                System.out.print("Missing db.user");
             }
+
             if (props.containsKey("db.pass")) {
                 dbPassword = props.getProperty("db.pass");
-//                System.out.print("DBPASS "+ dbPassword);
+                System.out.println("[Properties] Lấy db.pass từ file: ****** (đã che)");
             } else {
+                System.out.println("[Default] Thiếu db.pass trong file, dùng mặc định code: ****** (đã che)");
                 logger.error("Missing db.pass");
             }
+
         } catch (MalformedURLException ex) {
+            System.out.println("[Error] Sai định dạng đường dẫn file properties. Sẽ dùng TOÀN BỘ cấu hình mặc định trong code!");
             logger.error(ex);
         } catch (IOException ex) {
-            logger.error(ex);
+            System.out.println("[Error] Không tìm thấy hoặc không có quyền đọc file properties. Sẽ dùng TOÀN BỘ cấu hình mặc định trong code!");
+            logger.error("IOException khi doc file: " + ex.getMessage());
         }
+
+        System.out.println("=== KẾT QUẢ CẤU HÌNH CUỐI CÙNG SẼ DÙNG ===");
+        System.out.println("-> Host: " + dbHost + " | Port: " + dbPort + " | DB: " + dbName + " | User: " + dbUsername);
+        System.out.println("==========================================");
+
         String url = "jdbc:mysql://" + dbHost + ":" + dbPort + "/" + dbName + "?user=" + dbUsername + "&password=" + dbPassword + "&useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&failOverReadOnly=false&maxReconnects=10";
         MysqlDataSource _ds = new MysqlDataSource();
         _ds.setURL(url);

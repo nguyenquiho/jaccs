@@ -3,8 +3,10 @@
  */
 package com.worldfonecc.ami;
 
-import com.worldfonecc.callback.Callback;
+import com.worldfonecc.queue.JobExternal;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -12,6 +14,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.asteriskjava.util.Log;
 import org.asteriskjava.util.LogFactory;
 import com.worldfonecc.cache.MyMemcached;
@@ -65,9 +69,10 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
     private String username = "admin";
     private String password = "Admin@Stel7779";
     private final boolean log = false;
-    //private String callback;
-//    private final String curCDRtable = "curcdr";
-
+    
+    // Khởi tạo Thread Pool với giới hạn 50 luồng đồng thời để tránh sập RAM/CPU
+    private static final ExecutorService executorPool = Executors.newFixedThreadPool(50);
+    
     public void setHostname(String hostname) {
         this.hostname = hostname;
     }
@@ -90,10 +95,8 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         }
         ManagerConnectionFactory factory = new ManagerConnectionFactory(hostname, port, username, password);
         this.managerConnection = factory.createManagerConnection();
-        // connect to Asterisk and log in
         managerConnection.login();
         managerConnection.registerUserEventClass(WorldfoneUserEvent.class);
-        // register for events listener
         managerConnection.addEventListener(this);
         asteriskServer = new DefaultAsteriskServer(managerConnection);
         if (log) {
@@ -103,9 +106,7 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
 
     public void shutdown() throws Exception {
         if (managerConnection != null) {
-            //remove events listener
             managerConnection.removeEventListener(this);
-            // and finally log off and disconnect
             if ((managerConnection.getState() == ManagerConnectionState.CONNECTED) || (managerConnection.getState() == ManagerConnectionState.RECONNECTING)) {
                 managerConnection.logoff();
                 asteriskServer.shutdown();
@@ -121,6 +122,15 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         startup();
     }
 
+    private static String enc(String val) {
+        if (val == null) return "";
+        try {
+            return URLEncoder.encode(val, StandardCharsets.UTF_8.name());
+        } catch (Exception ex) {
+            return val;
+        }
+    }
+
     @Override
     public void onManagerEvent(ManagerEvent event) {
         Runnable task = () -> {
@@ -129,10 +139,14 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             
             String uniqueId = "";
             if (event instanceof AbstractChannelEvent) {
-            AbstractChannelEvent channelEvent = (AbstractChannelEvent) event;
+                AbstractChannelEvent channelEvent = (AbstractChannelEvent) event;
                 uniqueId = channelEvent.getUniqueId();
             }
-            System.out.println(uniqueId + " " + eventName + " " + System.currentTimeMillis() / 1000);
+            // Chỉ log những event quan trọng để tránh rác log
+//            if(!eventName.equals("VarSetEvent") && !eventName.equals("RtcpReceivedEvent")) {
+                System.out.println(uniqueId + " " + eventName + " " + System.currentTimeMillis() / 1000);
+//            }
+            
             try {
                 switch (eventName) {
                     case "CelEvent":
@@ -184,14 +198,33 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                         handleRenameEvent((RenameEvent) event);
                         break;
                 }
-            } catch (URISyntaxException ex) {
-                Logger.getLogger(WFManagerEventListener.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (Exception ex) {
+                System.out.println("[DEBUG] ERROR processing " + eventName + ": " + ex.getMessage());
             }
         };
-        Thread thread = new Thread(task);
-        thread.start();
+        executorPool.execute(task);
     }
 
+//    private void handleCelEvent(CelEvent ev) throws URISyntaxException {
+//        String linkedId = ev.getLinkedID();
+//        String uniqueId = ev.getUniqueID();
+//
+//        if (linkedId == null) linkedId = "";
+//        if (uniqueId == null) uniqueId = "";
+// 
+//        if (ev.getEventName() == null) return;
+//
+//        if (ev.getEventName().equalsIgnoreCase(CelEvent.CEL_EVENT_CHAN_START) && ev.getChannel() != null && !ev.getChannel().endsWith(";2")) {
+//            DBSelectionSet.getInstance().updateLastChannel(linkedId, ev.getChannel());
+//        } else if (ev.getEventName().equalsIgnoreCase(CelEvent.CEL_EVENT_BRIDGE_ENTER) && ev.getChannel() != null && !ev.getChannel().endsWith(";2") && ("Dial".equals(ev.getApplication()) || "Queue".equals(ev.getApplication()))) {
+//            DBSelectionSet.getInstance().updateAnswerTimeByUuid(uniqueId, ev.getEventTime());
+//
+//            if (ev.getPeer() != null && !"".equals(ev.getPeer()) && (ev.getPeer().startsWith("SIP") || ev.getPeer().startsWith("OOH323"))) {
+//                DBSelectionSet.getInstance().updateLastChannel(linkedId, ev.getPeer());
+//            }
+//        }
+//    }
+    
     private void handleCelEvent(CelEvent ev) throws URISyntaxException {
         try {
             JobInternal job = new JobInternal();
@@ -263,70 +296,124 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
     }
 
     private void handleNewStateEvent(NewStateEvent ev, long receivedTimestamp0) throws URISyntaxException {
-        if (ev.getChannelStateDesc().equalsIgnoreCase("Ringing")
-                && (ev.getChannel().startsWith("SIP") || ev.getChannel().startsWith("OOH323"))
-                && DBSelectionSet.getInstance().checkNumber(ev.getConnectedLineNum())
-                && !DBSelectionSet.getInstance().checkDialing(ev.getUniqueId())
-                && DBSelectionSet.getInstance().checkExtension(ev.getCallerIdNum())
-                && !DBSelectionSet.getInstance().checkExtension(ev.getConnectedLineNum())) {
-            //System.out.println("extension ring ring");
+        if ("Ringing".equalsIgnoreCase(ev.getChannelStateDesc())) {
+            System.out.println("[DEBUG] NewStateEvent -> Channel is Ringing. UniqueID: " + ev.getUniqueId());
+
+            boolean chkSIP = ev.getChannel() != null && (ev.getChannel().startsWith("SIP") || ev.getChannel().startsWith("OOH323") || ev.getChannel().startsWith("PJSIP"));
+            if (!chkSIP) {
+                return;
+            }
 
             String datereceived = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getDateReceived());
-            String parentcalluuid = DBSelectionSet.getInstance().getCalluuid(ev.getConnectedLineNum());
-            HashMap<String, String> CurCDR = DBSelectionSet.getInstance().CDRbyCalluuid(parentcalluuid);
-            if (CurCDR != null) {
-                String calltype = CurCDR.get("calltype");
-                String site_id = CurCDR.get("site_id");
-                HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
-                DBSelectionSet.getInstance().logExtension(ev.getUniqueId(), "inbound", site.get("site_id"), parentcalluuid);
-                //------------------------------------------------------------------------------------------------
-                String url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                Callback c = new Callback(url);
-                c.addParam("secret", site.get("secret"));
-                c.addParam("callstatus", "Dialing");
-                c.addParam("calluuid", ev.getUniqueId());
-                if (calltype.equalsIgnoreCase("Outbound_ACD") || calltype.equalsIgnoreCase("Outbound_non-ACD")) {
-                    c.addParam("direction", "outbound");
-                    c.addParam("callernumber", ev.getCallerIdNum());
-                    c.addParam("destinationnumber", ev.getConnectedLineNum());
-                } else {
-                    c.addParam("direction", "inbound");
-                    c.addParam("callernumber", ev.getConnectedLineNum());
-                    c.addParam("destinationnumber", ev.getCallerIdNum());
+            String callerNum = ev.getCallerIdNum() != null ? ev.getCallerIdNum().trim() : "";
+            String connectedNum = ev.getConnectedLineNum() != null ? ev.getConnectedLineNum().trim() : "";
+
+            // 1. Kiểm tra Outbound Call (Extension gọi ra ngoài)
+            HashMap<String, String> curCDR = DBSelectionSet.getInstance().CDRbyCalluuid(ev.getUniqueId());
+            if (curCDR != null) {
+                String site_id = curCDR.get("site_id");
+                if (site_id != null && !site_id.isEmpty()) {
+                    HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
+                    if (site != null) {
+                        String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                        String calltype = curCDR.get("calltype") != null ? curCDR.get("calltype") : "Outbound_non-ACD";
+                        String destNum = connectedNum.isEmpty() ? curCDR.get("destinationnumber") : connectedNum;
+
+                        String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                                + "&callstatus=Ringing"
+                                + "&calluuid=" + enc(ev.getUniqueId())
+                                + "&direction=outbound"
+                                + "&callernumber=" + enc(callerNum)
+                                + "&destinationnumber=" + enc(destNum)
+                                + "&starttime=" + enc(datereceived)
+                                + "&receivedtime=" + enc(datereceived)
+                                + "&agentname=" + enc(ev.getCallerIdName())
+                                + "&calltype=" + enc(calltype)
+                                + "&version=3";
+
+                        JobExternal job = new JobExternal();
+                        job.addParam("url", fullUrl);
+                        job.addParam("method", "get");
+                        job.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                        job.addParam("headers", "");
+                        job.QueuePut();
+
+                        System.out.println("[DEBUG] JobExternal QueuePut Ringing Outbound (UniqueID: " + ev.getUniqueId() + ")");
+                        return;
+                    }
                 }
-                c.addParam("starttime", datereceived);
-                c.addParam("receivedtime", datereceived);
-                c.addParam("parentcalluuid", parentcalluuid);
-                c.addParam("agentname", ev.getCallerIdName());
-                c.addParam("calltype", calltype);
-                c.addParam("version", "3");
-                c.sendGet(receivedTimestamp0);
-                //------------------------------------------------------------------------------------------------
+            }
+
+            // 2. Inbound Call (Khách ngoài / Queue gọi vào Extension)
+            boolean chkNum = DBSelectionSet.getInstance().checkNumber(connectedNum);
+            boolean chkDial = !DBSelectionSet.getInstance().checkDialing(ev.getUniqueId());
+            boolean chkExtCaller = DBSelectionSet.getInstance().checkExtension(callerNum);
+            boolean chkExtConn = !DBSelectionSet.getInstance().checkExtension(connectedNum);
+
+            if (chkNum && chkDial && chkExtCaller && chkExtConn) {
+                String parentcalluuid = DBSelectionSet.getInstance().getCalluuid(connectedNum);
+                HashMap<String, String> parentCDR = DBSelectionSet.getInstance().CDRbyCalluuid(parentcalluuid);
+
+                if (parentCDR != null) {
+                    String site_id = parentCDR.get("site_id");
+                    HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
+
+                    if (site != null) {
+                        DBSelectionSet.getInstance().logExtension(ev.getUniqueId(), "inbound", site.get("site_id"), parentcalluuid);
+
+                        String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                        String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                                + "&callstatus=Ringing"
+                                + "&calluuid=" + enc(ev.getUniqueId())
+                                + "&direction=inbound"
+                                + "&callernumber=" + enc(connectedNum)
+                                + "&destinationnumber=" + enc(callerNum)
+                                + "&starttime=" + enc(datereceived)
+                                + "&receivedtime=" + enc(datereceived)
+                                + "&parentcalluuid=" + enc(parentcalluuid)
+                                + "&agentname=" + enc(ev.getCallerIdName())
+                                + "&calltype=" + enc(parentCDR.get("calltype"))
+                                + "&version=3";
+
+                        JobExternal job = new JobExternal();
+                        job.addParam("url", fullUrl);
+                        job.addParam("method", "get");
+                        job.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                        job.addParam("headers", "");
+                        job.QueuePut();
+
+                        System.out.println("[DEBUG] JobExternal QueuePut Ringing Inbound (UniqueID: " + ev.getUniqueId() + ")");
+                    }
+                } else {
+                    System.out.println("[DEBUG] FAILED: parentCDR is NULL for Ringing. parentcalluuid: " + parentcalluuid);
+                }
+            } else {
+                System.out.println("[DEBUG] FAILED conditions for Inbound Ringing. UniqueID: " + ev.getUniqueId());
             }
         }
     }
 
     private void handleBridgeEvent(BridgeEvent ev, long receivedTimestamp0) throws URISyntaxException {
         if (ev.isLink() && !ev.getChannel1().endsWith(";2")) {
+            System.out.println("[DEBUG] BridgeEvent isLink -> DialAnswer. UniqueID1: " + ev.getUniqueId1());
             String answertime = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(Calendar.getInstance().getTime());
             String answered_key = "PBX_Event_handleBridgeEvent_" + ev.getUniqueId1();
             Object oCache_answer = MyMemcached.getInstance().get(answered_key);
             HashMap<String, String> curcdr = DBSelectionSet.getInstance().CDRbyCalluuid(ev.getUniqueId1());
+            
             if (oCache_answer == null && curcdr != null && (!curcdr.get("call_status").equalsIgnoreCase("DialAnswer"))) {
                 MyMemcached.getInstance().set(answered_key, ev.getUniqueId2(), new Date(System.currentTimeMillis() + 3000));
                 String site_id = curcdr.get("site_id");
                 HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
                 DBSelectionSet.getInstance().updateCallDialAnswer(ev.getUniqueId1(), "DialAnswer", ev.getUniqueId2(), ev.getChannel1(), ev.getChannel2(), curcdr);
                 DBSelectionSet.getInstance().updateAnswerUuid(ev.getUniqueId1(), ev.getUniqueId2());
+                
                 String calluuid = ev.getUniqueId1();
                 if (curcdr.get("parent_calluuid") != null) {
                     calluuid = curcdr.get("parent_calluuid");
                 }
+                
                 String call_des = ev.getCallerId2();
-                System.out.println("CALL DESSSSSSSSSS " + call_des);
-                System.out.println("CHANNEL 11111111 " + ev.getChannel1());
-                System.out.println("CHANNEL 22222222" + ev.getChannel2());
-                System.out.println("CURCDRRRRRRRRRRR" + curcdr);
                 if (ev.getCallerId2() == null || "".equals(ev.getCallerId2())) {
                     String channel2 = ev.getChannel2();
                     if (channel2.startsWith("Local")) {
@@ -334,35 +421,40 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                         call_des = arr_channel[1].split("@")[0];
                     }
                 }
+                
                 HashMap currentcall = DBSelectionSet.getInstance().getCurrentCall(ev.getUniqueId2());
                 String callernumber2 = ev.getCallerId1();
                 if (currentcall != null && currentcall.containsKey("number")) {
                     callernumber2 = currentcall.get("number").toString();
                 }
                 String agentname = DBSelectionSet.getInstance().getAgentName(call_des);
-                //----------------------------------------------------------------------------
-                String url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                Callback c = new Callback(url);
-                c.addParam("secret", site.get("secret"));
-                c.addParam("callstatus", "DialAnswer");
-                c.addParam("calluuid", calluuid);
-                c.addParam("childcalluuid", ev.getUniqueId2());
-                c.addParam("callernumber", callernumber2);
-                c.addParam("answertime", answertime);
-                if (agentname != null && !"".equals(agentname)) {
-                    c.addParam("agentname", agentname);
-                }
-                c.addParam("destinationnumber", call_des);
                 String dialid = DBSelectionSet.getInstance().getDialId(calluuid);
-                c.addParam("dialid", dialid);
-                c.addParam("version", "3");
-                c.sendGet(receivedTimestamp0, 1);
+
+                String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                        + "&callstatus=DialAnswer"
+                        + "&calluuid=" + enc(calluuid)
+                        + "&childcalluuid=" + enc(ev.getUniqueId2())
+                        + "&callernumber=" + enc(callernumber2)
+                        + "&answertime=" + enc(answertime)
+                        + (agentname != null && !agentname.isEmpty() ? "&agentname=" + enc(agentname) : "")
+                        + "&destinationnumber=" + enc(call_des)
+                        + "&dialid=" + enc(dialid)
+                        + "&version=3";
+
+                JobExternal job = new JobExternal();
+                job.addParam("url", fullUrl);
+                job.addParam("method", "get");
+                job.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                job.addParam("headers", "");
+                job.QueuePut();
+
+                System.out.println("[DEBUG] JobExternal QueuePut DialAnswer (UniqueID: " + calluuid + ")");
             } else {
+                System.out.println("[DEBUG] FAILED to process DialAnswer directly. oCache_answer=" + (oCache_answer!=null) + ", curcdr!=null=" + (curcdr!=null));
                 Object oCache = MyMemcached.getInstance().get(ev.getChannel1());
                 if (oCache != null) {
                     try {
-                        String url;
-                        Callback c;
                         String jobStr = oCache.toString();
                         JSONObject data_transfer = new JSONObject(jobStr);
                         if (data_transfer.get("site_id").toString().equalsIgnoreCase("click_to_call_transfer")) {
@@ -390,22 +482,26 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                                 if (currentcall != null && currentcall.containsKey("number")) {
                                     callernumber2 = currentcall.get("number").toString();
                                 }
-                                //----------------------------------------------------------
-                                url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                                c = new Callback(url);
-                                c.addParam("secret", site.get("secret"));
-                                c.addParam("callstatus", "DialAnswerTransfer");
-                                c.addParam("calluuid", calluuid);
-                                c.addParam("childcalluuid", ev.getUniqueId2());
-                                c.addParam("callernumber", callernumber2);
-                                c.addParam("answertime", answertime);
-                                c.addParam("agentname", agentname);
-                                c.addParam("destinationnumber", call_des);
-                                c.addParam("version", "3");
-                                c.sendGet(receivedTimestamp0);
-                                //String result = c.sendGet(receivedTimestamp0);
-                                //System.out.println(result);
-                                //----------------------------------------------------------                                
+                                
+                                String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                                String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                                        + "&callstatus=DialAnswerTransfer"
+                                        + "&calluuid=" + enc(calluuid)
+                                        + "&childcalluuid=" + enc(ev.getUniqueId2())
+                                        + "&callernumber=" + enc(callernumber2)
+                                        + "&answertime=" + enc(answertime)
+                                        + "&agentname=" + enc(agentname)
+                                        + "&destinationnumber=" + enc(call_des)
+                                        + "&version=3";
+
+                                JobExternal job = new JobExternal();
+                                job.addParam("url", fullUrl);
+                                job.addParam("method", "get");
+                                job.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                                job.addParam("headers", "");
+                                job.QueuePut();
+
+                                System.out.println("[DEBUG] JobExternal QueuePut DialAnswerTransfer (Click2Call) (UniqueID: " + calluuid + ")");
                                 MyMemcached.getInstance().delete(ev.getChannel1());
                             }
                         } else {
@@ -422,20 +518,26 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                             if (currentcall != null && currentcall.containsKey("number")) {
                                 callernumber2 = currentcall.get("number").toString();
                             }
-                            //------------------------------------------------------------------------
-                            url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                            c = new Callback(url);
-                            c.addParam("secret", site.get("secret"));
-                            c.addParam("callstatus", "DialAnswerTransfer");
-                            c.addParam("calluuid", calluuid);
-                            c.addParam("childcalluuid", child_calluuid);
-                            c.addParam("callernumber", callernumber2);
-                            c.addParam("answertime", answertime);
-                            c.addParam("agentname", agentname);
-                            c.addParam("destinationnumber", call_des);
-                            c.addParam("version", "3");
-                            c.sendGet(receivedTimestamp0);
-                            //------------------------------------------------------------------------
+
+                            String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                            String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                                    + "&callstatus=DialAnswerTransfer"
+                                    + "&calluuid=" + enc(calluuid)
+                                    + "&childcalluuid=" + enc(child_calluuid)
+                                    + "&callernumber=" + enc(callernumber2)
+                                    + "&answertime=" + enc(answertime)
+                                    + "&agentname=" + enc(agentname)
+                                    + "&destinationnumber=" + enc(call_des)
+                                    + "&version=3";
+
+                            JobExternal job = new JobExternal();
+                            job.addParam("url", fullUrl);
+                            job.addParam("method", "get");
+                            job.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                            job.addParam("headers", "");
+                            job.QueuePut();
+
+                            System.out.println("[DEBUG] JobExternal QueuePut DialAnswerTransfer (UniqueID: " + calluuid + ")");
                             MyMemcached.getInstance().delete(ev.getChannel1());
                         }
                     } catch (JSONException ex) {
@@ -454,61 +556,108 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
     }
 
     private void handleHangupEvent(HangupEvent ev, long receivedTimestamp0) throws URISyntaxException {
+        System.out.println("[DEBUG] HangupEvent triggered for UniqueID: " + ev.getUniqueId());
+
         String childcalluuid = DBSelectionSet.getInstance().checkCallHangup(ev.getUniqueId());
         if (childcalluuid != null) {
             String datereceived = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getDateReceived());
-            String url;
-            Callback c;
+            
+            // 1. Lấy site_id trực tiếp theo UUID hiện tại
             String site_id = DBSelectionSet.getInstance().getSiteIdBycalluuid(ev.getUniqueId());
+            String parentcalluuid = null;
+
+            // 2. Fallback tìm theo parent UUID nếu là leg con (trunk)
+            if (site_id == null || "".equals(site_id)) {
+                parentcalluuid = DBSelectionSet.getInstance().getParentCalluuid(ev.getUniqueId());
+                if (parentcalluuid != null && !"".equals(parentcalluuid)) {
+                    site_id = DBSelectionSet.getInstance().getSiteIdBycalluuid(parentcalluuid);
+                }
+            }
+
+            // 3. Fallback tiếp từ CDR nếu chưa thấy
+            if (site_id == null || "".equals(site_id)) {
+                HashMap<String, String> cdr = DBSelectionSet.getInstance().CDRbyCalluuid(ev.getUniqueId());
+                if (cdr == null) {
+                    cdr = DBSelectionSet.getInstance().CDRbyChildCalluuid(ev.getUniqueId());
+                }
+                if (cdr != null && cdr.containsKey("site_id")) {
+                    site_id = cdr.get("site_id");
+                    if (parentcalluuid == null && cdr.containsKey("parent_calluuid")) {
+                        parentcalluuid = cdr.get("parent_calluuid");
+                    }
+                }
+            }
+
             if (site_id != null && !"".equals(site_id)) {
                 HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
                 if (site != null) {
+                    String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                    
                     if (DBSelectionSet.getInstance().checkUuid(ev.getUniqueId())) {
                         DBSelectionSet.getInstance().updateCall(ev.getUniqueId(), "HangUp");
-                        //------------------------------------------------
-                        url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                        c = new Callback(url);
-                        c.addParam("secret", site.get("secret"));
-                        c.addParam("callstatus", "Trim");
-                        c.addParam("calluuid", ev.getUniqueId());
-                        c.addParam("version", "3");
-                        c.sendGet(receivedTimestamp0);
-                        //------------------------------------------------
+                        
+                        String fullUrlTrim = baseUrl + "?secret=" + enc(site.get("secret"))
+                                + "&callstatus=Trim"
+                                + "&calluuid=" + enc(ev.getUniqueId())
+                                + "&version=3";
+
+                        JobExternal jobTrim = new JobExternal();
+                        jobTrim.addParam("url", fullUrlTrim);
+                        jobTrim.addParam("method", "get");
+                        jobTrim.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                        jobTrim.addParam("headers", "");
+                        jobTrim.QueuePut();
+                        System.out.println("[DEBUG] JobExternal QueuePut Trim (UniqueID: " + ev.getUniqueId() + ")");
+
                         if (DBSelectionSet.getInstance().checkAnswerChilduuid(ev.getUniqueId())) {
-                            String parentcalluuid = DBSelectionSet.getInstance().getParentCalluuid(ev.getUniqueId());
-                            //------------------------------------------------
-                            url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                            c = new Callback(url);
-                            c.addParam("secret", site.get("secret"));
-                            c.addParam("callstatus", "HangUp");
-                            c.addParam("calluuid", parentcalluuid);
-                            c.addParam("datereceived", datereceived);
-                            c.addParam("causetxt", ev.getCause().toString());
-                            c.sendGet(receivedTimestamp0);
-                            //------------------------------------------------
+                            if (parentcalluuid == null || "".equals(parentcalluuid)) {
+                                parentcalluuid = DBSelectionSet.getInstance().getParentCalluuid(ev.getUniqueId());
+                            }
+                            
+                            String fullUrlHangup = baseUrl + "?secret=" + enc(site.get("secret"))
+                                    + "&callstatus=HangUp"
+                                    + "&calluuid=" + enc(parentcalluuid)
+                                    + "&datereceived=" + enc(datereceived)
+                                    + "&causetxt=" + enc(ev.getCause() != null ? ev.getCause().toString() : "");
+
+                            JobExternal jobHangup = new JobExternal();
+                            jobHangup.addParam("url", fullUrlHangup);
+                            jobHangup.addParam("method", "get");
+                            jobHangup.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                            jobHangup.addParam("headers", "");
+                            jobHangup.QueuePut();
+                            System.out.println("[DEBUG] JobExternal QueuePut HangUp (Parent UniqueID: " + parentcalluuid + ")");
                         }
                     } else {
                         if (!ev.getChannel().startsWith("Transfered")) {
                             DBSelectionSet.getInstance().updateCall(ev.getUniqueId(), "HangUp");
                         }
-                        //--------------------------------------------------------------------------------------
                         DBSelectionSet.getInstance().deleteCallLog(ev.getConnectedLineNum(), ev.getCallerIdNum());
                         DBSelectionSet.getInstance().deleteCallLogbyUUid(ev.getUniqueId());
 
-                        url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                        c = new Callback(url);
-                        c.addParam("secret", site.get("secret"));
-                        c.addParam("callstatus", "HangUp");
-                        c.addParam("calluuid", ev.getUniqueId());
-                        c.addParam("datereceived", datereceived);
-                        c.addParam("causetxt", ev.getCause().toString());
-                        c.addParam("version", "3");
-                        c.sendGet(receivedTimestamp0);
-                        //--------------------------------------------------------------------------------------
+                        String fullUrlHangup = baseUrl + "?secret=" + enc(site.get("secret"))
+                                + "&callstatus=HangUp"
+                                + "&calluuid=" + enc(ev.getUniqueId())
+                                + "&datereceived=" + enc(datereceived)
+                                + "&causetxt=" + enc(ev.getCause() != null ? ev.getCause().toString() : "")
+                                + "&version=3";
+
+                        JobExternal jobHangup = new JobExternal();
+                        jobHangup.addParam("url", fullUrlHangup);
+                        jobHangup.addParam("method", "get");
+                        jobHangup.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                        jobHangup.addParam("headers", "");
+                        jobHangup.QueuePut();
+                        System.out.println("[DEBUG] JobExternal QueuePut HangUp (UniqueID: " + ev.getUniqueId() + ")");
                     }
                 }
+            } else {
+                System.out.println("[DEBUG] Hangup FAILED: site_id is null/empty for UniqueID: " + ev.getUniqueId());
             }
+        } else {
+            System.out.println("[DEBUG] Hangup FAILED: childcalluuid is null (checkCallHangup returned null) for UniqueID: " + ev.getUniqueId());
         }
+        
         Object oCache = MyMemcached.getInstance().get("LocalBridgeEvent_" + ev.getUniqueId());
         if (oCache != null) {
             MyMemcached.getInstance().delete("LocalBridgeEvent_" + ev.getUniqueId());
@@ -516,6 +665,17 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
     }
 
     private void handleCdrEvent(CdrEvent ev, long receivedTimestamp0) throws URISyntaxException {
+        System.out.println("[DEBUG] Processing CdrEvent -> UniqueID: " + ev.getUniqueId() + " | Disposition: " + ev.getDisposition());
+        try {
+            JobCdrEvent jobCdr = new JobCdrEvent();
+            jobCdr.addParam("event", "CDR");
+            jobCdr.addParam("uniqueid", ev.getUniqueId());
+            System.out.println("[DEBUG] QueuePut CDR sync");
+
+            jobCdr.QueuePut(2);
+        } catch (Exception e) {
+            logger.error(e);
+        }
         /* Xử lý event ACS */
         if ("acs".equals(ev.getCalltype())) {
             long timestamp = System.currentTimeMillis();
@@ -539,14 +699,12 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             acs_event.QueuePut();
         }
 
-        /* Xử lý event CDR externalCRM */
         try {
             if (ev.getDestinationChannel() == null || "".equals(ev.getDestinationChannel())) {
                 String[] lastApps = new String[]{"agi", "goto", "read", "hangup"};
                 if (Arrays.stream(lastApps).anyMatch(ev.getLastApplication().trim().toLowerCase()::equals) && ev.getDestinationContext().contains("trunk")) {
                     return;
                 }
-                //Khong lam gi
             } else {
                 String chanel = ev.getChannel();
                 String dstchanel = ev.getDestinationChannel();
@@ -580,7 +738,6 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                 DBSelectionSet.getInstance().updateCDRHangupBy(ev.getUniqueId(), hangup_by);
             }
 
-            //cache chặn sự kiện cdr cuộc gọi nhánh chính trong trường hợp transfer
             Object oCache = MyMemcached.getInstance().get(ev.getUniqueId());
             if (oCache == null) {
                 HashMap<String, String> current_call = DBSelectionSet.getInstance().getCurrentCallBycalluuid(ev.getUniqueId());
@@ -615,22 +772,17 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                     }
                     totalduration = Common.diffTime(printtime, endtime, starttime);
                     billduration = Common.diffTime(printtime, endtime, answertime);
-                    //---------------------------------------------------------------------
                     boolean is_answer = "1".equals(current_call.get("dialing_start_time"));
-                    //---------------------------------------------------------------------
                     DBSelectionSet.getInstance().deleteCallLog(ev.getCallerId(), ev.getDestination());
                     DBSelectionSet.getInstance().deleteCallLogbyUUid(ev.getUniqueId());
                     DBSelectionSet.getInstance().updateCall(ev.getUniqueId(), "CdrEvent");
                     DBSelectionSet.getInstance().deleteCallHold(ev.getUniqueId());
-                    //stopHold=0 không có hold, 1 hold kết thúc,2 hold chưa kết thúc
-                    //tính hold time
                     int stopHold = 0;
                     int holdtime = 0;
                     try {
                         stopHold = Integer.parseInt(current_call.get("stopHold"));
                         holdtime = Integer.parseInt(current_call.get("holdtime"));
                     } catch (NullPointerException | NumberFormatException ex) {
-                        //Logger.getLogger(WFManagerEventListener.class.getName()).log(Level.SEVERE, null, ex);
                     }
                     if (stopHold == 2) {
                         SimpleDateFormat dateValue = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -639,40 +791,30 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                             startHoldTime = dateValue.parse(current_call.get("startholdtime"));
                             holdtime = holdtime + (ev.getEndTimeAsDate().getSeconds() - startHoldTime.getSeconds());
                         } catch (ParseException | NullPointerException ex) {
-                            //Logger.getLogger(WFManagerEventListener.class.getName()).log(Level.SEVERE, null, ex);
                         }
                     }
-                    //kết thúc tính holdtime
                     try {
                         String site_id = current_call.get("site_id");
                         HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
-                        String url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                        Callback c = new Callback(url);
-                        c.addParam("secret", site.get("secret"));
-                        c.addParam("callstatus", "CDR");
-                        c.addParam("calluuid", ev.getUniqueId());
-                        c.addParam("starttime", starttime);
-                        c.addParam("answertime", answertime);
-                        c.addParam("endtime", endtime);
-                        c.addParam("totalduration", totalduration);
-                        String sipcause = " ";
+                        String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                        
+                        String disposition = ev.getDisposition();
+                        String monitorParam = "";
+                        String billdurationVal = "0";
+
                         if (is_answer) {
-                            c.addParam("billduration", billduration);
-                            c.addParam("disposition", ev.getDisposition());
+                            billdurationVal = billduration;
                             if (ev.getDisposition().equalsIgnoreCase(CdrEvent.DISPOSITION_ANSWERED)) {
-                                c.addParam("hangup_by", hangup_by);
                                 String monitor_filename = ev.getRecordfile();
-                                if (monitor_filename != null) {
-                                    if (!"".equals(monitor_filename)) {
-                                        c.addParam("monitorfilename", monitor_filename);
-                                    }
+                                if (monitor_filename != null && !"".equals(monitor_filename)) {
+                                    monitorParam = "&monitorfilename=" + enc(monitor_filename);
                                 }
                             }
                         } else {
-                            c.addParam("billduration", "0");
                             if (ev.getDisposition().equalsIgnoreCase(CdrEvent.DISPOSITION_ANSWERED)) {
-                                c.addParam("disposition", CdrEvent.DISPOSITION_NO_ANSWER);
+                                disposition = CdrEvent.DISPOSITION_NO_ANSWER;
                             } else {
+                                String sipcause = " ";
                                 try {
                                     if (ev.getSipcause() != null) {
                                         sipcause = ev.getSipcause();
@@ -681,60 +823,81 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                                     System.out.println(ex.getMessage());
                                 }
                                 if (sipcause.contains("503") || sipcause.contains("480") || sipcause.contains("487")) {
-                                    c.addParam("disposition", CdrEvent.DISPOSITION_FAILED);
-                                } else {
-                                    c.addParam("disposition", ev.getDisposition());
+                                    disposition = CdrEvent.DISPOSITION_FAILED;
                                 }
                             }
-                            c.addParam("hangup_by", "");
+                            hangup_by = "";
                         }
-                        c.addParam("holdtime", holdtime + "");
-                        c.addParam("calltype", ev.getCalltype());
-                        c.addParam("dialid", ev.getDialid());
-                        c.addParam("version", "3");
+
+                        String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                                + "&callstatus=CDR"
+                                + "&calluuid=" + enc(ev.getUniqueId())
+                                + "&starttime=" + enc(starttime)
+                                + "&answertime=" + enc(answertime)
+                                + "&endtime=" + enc(endtime)
+                                + "&totalduration=" + enc(totalduration)
+                                + "&billduration=" + enc(billdurationVal)
+                                + "&disposition=" + enc(disposition)
+                                + "&hangup_by=" + enc(hangup_by)
+                                + monitorParam
+                                + "&holdtime=" + enc(String.valueOf(holdtime))
+                                + "&calltype=" + enc(ev.getCalltype())
+                                + "&dialid=" + enc(ev.getDialid())
+                                + "&version=3";
+
                         if (!ev.getLastApplication().trim().toLowerCase().contains("musiconhold")) {
-                            c.sendGet(receivedTimestamp0);
+                            JobExternal jobCdrExt = new JobExternal();
+                            jobCdrExt.addParam("url", fullUrl);
+                            jobCdrExt.addParam("method", "get");
+                            jobCdrExt.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                            jobCdrExt.addParam("headers", "");
+                            jobCdrExt.QueuePut();
+                            System.out.println("[DEBUG] JobExternal QueuePut CDR (UniqueID: " + ev.getUniqueId() + ")");
                         }
                     } catch (NullPointerException ex) {
-                        //System.out.println(ex.getClass().getName() + ": " + ex.getMessage());
                     }
                 } else {
                     current_call = DBSelectionSet.getInstance().getCurrentCall(ev.getUniqueId());
                     if (current_call != null) {
-                        String starttime = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getStartTimeAsDate());
-                        String answertime;
-                        try {
-                            answertime = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getAnswerTimeAsDate());
-                        } catch (Exception ex) {
-                            answertime = "";
-                        }
-                        String endtime = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getEndTimeAsDate());
+                        
+                        // Kiểm tra null trước khi format
+                        SimpleDateFormat printtime = new SimpleDateFormat("yyyyMMdd'T'HHmmss");
+                        String starttime = ev.getStartTimeAsDate() != null ? printtime.format(ev.getStartTimeAsDate()) : "";
+                        String answertime = ev.getAnswerTimeAsDate() != null ? printtime.format(ev.getAnswerTimeAsDate()) : "";
+                        String endtime = ev.getEndTimeAsDate() != null ? printtime.format(ev.getEndTimeAsDate()) : "";
+                        
                         String site_id = current_call.get("site_id");
                         HashMap<String, String> site = DBSelectionSet.getInstance().getSiteById(site_id);
-                        String url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                        Callback c = new Callback(url);
-                        c.addParam("secret", site.get("secret"));
-                        c.addParam("callstatus", "CDR");
-                        c.addParam("calluuid", current_call.get("transfered_uuid"));
-                        c.addParam("starttime", starttime);
-                        c.addParam("answertime", answertime);
-                        c.addParam("endtime", endtime);
-                        c.addParam("billduration", ev.getBillableSeconds().toString());
-                        c.addParam("totalduration", ev.getDuration().toString());
-                        c.addParam("holdtime", "0");
-                        c.addParam("calltype", ev.getCalltype());
-                        c.addParam("dialid", ev.getDialid());
+                        String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+
+                        String disposition = ev.getDisposition();
                         String sipcause = " ";
                         if (sipcause.contains("503") || sipcause.contains("480") || sipcause.contains("487")) {
-                            c.addParam("disposition", CdrEvent.DISPOSITION_FAILED);
-                        } else {
-                            c.addParam("disposition", ev.getDisposition());
+                            disposition = CdrEvent.DISPOSITION_FAILED;
                         }
-                        if (ev.getDisposition().equalsIgnoreCase(CdrEvent.DISPOSITION_ANSWERED)) {
-                            c.addParam("hangup_by", hangup_by);
-                        }
-                        c.addParam("version", "3");
-                        c.sendGet(receivedTimestamp0);
+
+                        String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                                + "&callstatus=CDR"
+                                + "&calluuid=" + enc(current_call.get("transfered_uuid"))
+                                + "&starttime=" + enc(starttime)
+                                + "&answertime=" + enc(answertime)
+                                + "&endtime=" + enc(endtime)
+                                + "&billduration=" + enc(ev.getBillableSeconds().toString())
+                                + "&totalduration=" + enc(ev.getDuration().toString())
+                                + "&holdtime=0"
+                                + "&calltype=" + enc(ev.getCalltype())
+                                + "&dialid=" + enc(ev.getDialid())
+                                + "&disposition=" + enc(disposition)
+                                + (ev.getDisposition().equalsIgnoreCase(CdrEvent.DISPOSITION_ANSWERED) ? "&hangup_by=" + enc(hangup_by) : "")
+                                + "&version=3";
+
+                        JobExternal jobCdrExt = new JobExternal();
+                        jobCdrExt.addParam("url", fullUrl);
+                        jobCdrExt.addParam("method", "get");
+                        jobCdrExt.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                        jobCdrExt.addParam("headers", "");
+                        jobCdrExt.QueuePut();
+                        System.out.println("[DEBUG] JobExternal QueuePut CDR (Transfered UUID)");
                     } else if (ev.getCallback() != null && ev.getCallbacktype() != null) {
                         String channel = ev.getChannel();
                         if (channel.startsWith("SIP")) {
@@ -746,27 +909,13 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                                 String calluuid = ev.getUniqueId();
                                 String starttime = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getStartTimeAsDate());
                                 String endtime = new SimpleDateFormat("yyyyMMdd'T'HHmmss").format(ev.getEndTimeAsDate());
-                                String url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                                Callback c = new Callback(url);
-                                c.addParam("secret", site.get("secret"));
-                                c.addParam("callstatus", "PutCDR");
-                                c.addParam("calluuid", calluuid);
-                                c.addParam("direction", "outbound");
-                                c.addParam("callernumber", callback);
-                                c.addParam("destinationnumber", callto);
-                                c.addParam("starttime", starttime);
-                                c.addParam("answertime", "");
-                                c.addParam("endtime", endtime);
-                                c.addParam("billduration", "0");
-                                c.addParam("totalduration", ev.getDuration().toString());
-                                c.addParam("calltype", ev.getCalltype());
-                                String dialid = ev.getDialid();
-                                c.addParam("dialid", dialid);
-                                c.addParam("dnis", ev.getCallerId());
-                                String sipcause = " ";
+                                String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+
+                                String disposition = ev.getDisposition();
                                 if (ev.getDisposition().equalsIgnoreCase(CdrEvent.DISPOSITION_ANSWERED)) {
-                                    c.addParam("disposition", CdrEvent.DISPOSITION_NO_ANSWER);
+                                    disposition = CdrEvent.DISPOSITION_NO_ANSWER;
                                 } else {
+                                    String sipcause = " ";
                                     try {
                                         if (ev.getSipcause() != null) {
                                             sipcause = ev.getSipcause();
@@ -775,17 +924,39 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                                         System.out.println(e);
                                     }
                                     if (sipcause.contains("503") || sipcause.contains("480") || sipcause.contains("487")) {
-                                        c.addParam("disposition", CdrEvent.DISPOSITION_FAILED);
-                                    } else {
-                                        c.addParam("disposition", ev.getDisposition());
+                                        disposition = CdrEvent.DISPOSITION_FAILED;
                                     }
-                                } 
-                                c.addParam("version", "3");
-                                c.sendGet(receivedTimestamp0);
+                                }
+
+                                String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                                        + "&callstatus=PutCDR"
+                                        + "&calluuid=" + enc(calluuid)
+                                        + "&direction=outbound"
+                                        + "&callernumber=" + enc(callback)
+                                        + "&destinationnumber=" + enc(callto)
+                                        + "&starttime=" + enc(starttime)
+                                        + "&answertime="
+                                        + "&endtime=" + enc(endtime)
+                                        + "&billduration=0"
+                                        + "&totalduration=" + enc(ev.getDuration().toString())
+                                        + "&calltype=" + enc(ev.getCalltype())
+                                        + "&dialid=" + enc(ev.getDialid())
+                                        + "&dnis=" + enc(ev.getCallerId())
+                                        + "&disposition=" + enc(disposition)
+                                        + "&version=3";
+
+                                JobExternal jobCdrExt = new JobExternal();
+                                jobCdrExt.addParam("url", fullUrl);
+                                jobCdrExt.addParam("method", "get");
+                                jobCdrExt.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                                jobCdrExt.addParam("headers", "");
+                                jobCdrExt.QueuePut();
+                                System.out.println("[DEBUG] JobExternal QueuePut PutCDR (Outbound Callback)");
                             }
                         }
                     }
                 }
+                
             } else {
                 MyMemcached.getInstance().delete(ev.getUniqueId());
             }
@@ -804,20 +975,23 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         String[] temp = member.split("/");
         String extension = temp[1];
         if (DBSelectionSet.getInstance().checkExtension(extension)) {
-            String url;
-            Callback c;
             String queue = ev.getQueue();
             ArrayList<HashMap> sites = DBSelectionSet.getInstance().getAllSite();
             for (HashMap<String, String> site : sites) {
-                url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                c = new Callback(url);
-                c.addParam("secret", site.get("secret"));
-                c.addParam("callstatus", "QueueMemberAdd");
-                c.addParam("queue", queue);
-                c.addParam("member", extension);
-                c.addParam("actiontime", datereceived);
-                c.addParam("version", "3");
-                c.sendGet(receivedTimestamp0);
+                String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                        + "&callstatus=QueueMemberAdd"
+                        + "&queue=" + enc(queue)
+                        + "&member=" + enc(extension)
+                        + "&actiontime=" + enc(datereceived)
+                        + "&version=3";
+
+                JobExternal job = new JobExternal();
+                job.addParam("url", fullUrl);
+                job.addParam("method", "get");
+                job.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                job.addParam("headers", "");
+                job.QueuePut();
             }
         }
     }
@@ -828,27 +1002,29 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         String[] temp = member.split("/");
         String extension = temp[1];
         if (DBSelectionSet.getInstance().checkExtension(extension)) {
-            String url;
-            Callback c;
             String queue = ev.getQueue();
             ArrayList<HashMap> sites = DBSelectionSet.getInstance().getAllSite();
             for (HashMap<String, String> site : sites) {
-                url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-                c = new Callback(url);
-                c.addParam("secret", site.get("secret"));
-                c.addParam("callstatus", "QueueMemberRemove");
-                c.addParam("queue", queue);
-                c.addParam("member", extension);
-                c.addParam("actiontime", datereceived);
-                c.addParam("version", "3");
-                c.sendGet(receivedTimestamp0);
+                String baseUrl = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
+                String fullUrl = baseUrl + "?secret=" + enc(site.get("secret"))
+                        + "&callstatus=QueueMemberRemove"
+                        + "&queue=" + enc(queue)
+                        + "&member=" + enc(extension)
+                        + "&actiontime=" + enc(datereceived)
+                        + "&version=3";
+
+                JobExternal job = new JobExternal();
+                job.addParam("url", fullUrl);
+                job.addParam("method", "get");
+                job.addParam("receivedTimestamp", String.valueOf(receivedTimestamp0));
+                job.addParam("headers", "");
+                job.QueuePut();
             }
         }
     }
 
     private void handleQueueMemberStatus(QueueMemberStatusEvent ev, long receivedTimestamp0) {
         try {
-            // JobInternal event sync queue member status
             JobInternal jobInternal = new JobInternal();
             jobInternal.addParam("event", "QueueMemberStatus");
             jobInternal.addParam("timestamp", receivedTimestamp0 + "");
@@ -861,12 +1037,10 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             jobInternal.addParam("membership", ev.getMembership());
             jobInternal.QueuePut();
         } catch (Exception ex) {
-            //System.out.println(ex.getClass().getName() + ": " + ex.getMessage());
         }
     }
 
     private void handlePeerStatusEvent(PeerStatusEvent ev, long receivedTimestamp0) throws URISyntaxException {
-        //System.out.println(ev.toString());
         String _channeltype = ev.getChannelType();
         String _peer = ev.getPeer();
         String _peerstatus = ev.getPeerStatus();
@@ -875,7 +1049,6 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             int _port = ev.getPort();
             __port = String.valueOf(_port);
         } catch (NumberFormatException | NullPointerException ex) {
-            //System.out.println("Exception PeerStatus Port: " + ex.getMessage());
         }
 
         String _address = ev.getAddress();
@@ -886,7 +1059,6 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                 __port = arrAddr[1];
             }
         } catch (ArrayIndexOutOfBoundsException | NullPointerException ex) {
-            //System.out.println("Exception PeerStatus Address: " + ex.getMessage());
         }
 
         String peername = _peer.toLowerCase();
@@ -914,7 +1086,6 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             jobPeer.addParam("pbxserver", pbx_server);
             jobPeer.QueuePut();
         } catch (Exception ex) {
-            //System.out.println(ex.getClass().getName() + ": " + ex.getMessage());
         }
     }
 
@@ -930,14 +1101,12 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
                 DBSelectionSet.getInstance().stopHoldMain(calluuid_main, datereceived);
             }
         } else {
-            // if(curcalldb.checkCallParent(ev.getUniqueId())){
             if (ev.isStart()) {
                 DBSelectionSet.getInstance().startHold(ev.getUniqueId(), datereceived);
             }
             if (ev.isStop()) {
                 DBSelectionSet.getInstance().stopHold(ev.getUniqueId(), datereceived);
             }
-            // }
         }
     }
 
@@ -983,23 +1152,7 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
             ext_status.addParam("status", String.valueOf(ev.getStatus()));    
             ext_status.addParam("status_ext", ev.getStatustext());
             ext_status.QueuePut();
-            
-            // Put ExtensionStatus for 4xs
-//            String url;
-//            Callback c;
-//            ArrayList<HashMap> sites = DBSelectionSet.getInstance().getAllSite();
-//            for (HashMap<String, String> site : sites) {
-//                url = site.get("callback_url").contains("http") ? site.get("callback_url") : "http://" + site.get("callback_url");
-//                c = new Callback(url);
-//                c.addParam("event", "ExtensionStatus");
-//                c.addParam("hint", ev.getHint());
-//                c.addParam("exten", ev.getExten());
-//                c.addParam("status", String.valueOf(ev.getStatus()));
-//                c.addParam("status_ext", ev.getStatustext());
-//                c.sendGet(receivedTimestamp0);
-//            }
         } catch (Exception ex) {
-            //System.out.println(ex.getClass().getName() + ": " + ex.getMessage());
         }
     }
 
@@ -1021,5 +1174,4 @@ public class WFManagerEventListener extends Object implements ManagerEventListen
         while (true) {
         }
     }
-
 }

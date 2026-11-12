@@ -20,10 +20,12 @@
     </editor-bookmarks>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
         <group>
-            <file>file:/D:/private/dev-java-v3/AGI_PBX_v3.0/nbproject/build-impl.xml</file>
-            <file>file:/D:/private/dev-java-v3/AGI_PBX_v3.0/web/WEB-INF/dispatcher-servlet.xml</file>
-            <file>file:/D:/private/dev-java-v3/AGI_PBX_v3.0/nbproject/project.properties</file>
-            <file>file:/D:/private/dev-java-v3/AGI_PBX_v3.0/web/META-INF/context.xml</file>
+            <file>file:/D:/st2026/dev-java-v3-asterisk20/AGI_PBX_v3.0/src/java/com/worldfone/agi/lcr.java</file>
+            <file>file:/D:/st2026/dev-java-v3-asterisk20/AGI_PBX_v3.0/src/java/com/worldfone/agi/check_externalcrm.java</file>
+            <file>file:/D:/st2026/dev-java-v3-asterisk20/AGI_PBX_v3.0/src/java/com/worldfone/access/MysqlConnection.java</file>
+            <file>file:/D:/st2026/dev-java-v3-asterisk20/AGI_PBX_v3.0/src/java/com/worldfone/agi/crmoutbound.java</file>
+            <file>file:/D:/st2026/dev-java-v3-asterisk20/AGI_PBX_v3.0/src/java/com/worldfone/agi/crminbound.java</file>
+            <file>file:/D:/st2026/dev-java-v3-asterisk20/AGI_PBX_v3.0/src/java/com/worldfone/access/DBSelectionSet.java</file>
         </group>
     </open-files>
 </project-private>
